@@ -1,0 +1,6 @@
+metricSets:
+  - indices: [ 'metricbeat-*' ]
+    fields:
+      - patterns: [ '^prometheus\.metrics\.' ]
+        labels: [ '^prometheus\.labels\.(.*)' ]
+      - patterns: [ '^kibana\.stats\.' ]

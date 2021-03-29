@@ -1,0 +1,29 @@
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kibana-example
+  namespace: stack-monitoring
+spec:
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+  - type: Pods
+    pods:
+      metric:
+        name: kibana.stats.concurrent_connections
+      target:
+        type: AverageValue
+        averageValue: 42
+  scaleTargetRef:
+    apiVersion: kibana.k8s.elastic.co/v1
+    kind: Kibana
+    name: kibana-example
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 5
