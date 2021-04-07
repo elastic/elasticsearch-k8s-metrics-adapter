@@ -67,6 +67,15 @@ type QueryParams struct {
 	Name   types.NamespacedName
 }
 
+type CustomQueryParams struct {
+	Metric       string
+	Pod          string
+	PodSelectors map[string]string
+	Namespace    string
+	// All the objects in the context of the metric query, for example other Pods for the deployments
+	Objects []string
+}
+
 func QueryFor(params QueryParams) string {
 	return fmt.Sprintf(query, params.Metric, params.Name.Namespace, params.Name.Name)
 }

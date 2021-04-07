@@ -22,11 +22,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	esv7 "github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
+	"github.com/itchyny/gojq"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
@@ -55,10 +58,29 @@ type Fields struct {
 	// Filter which fields are exposed, for example { "^prometheus\.metrics\." }
 	Patterns         []string        `yaml:"patterns"`
 	compiledPatterns []regexp.Regexp `yaml:"-"`
+	// Name is the name of a static field
+	Name string `yaml:"name"`
+	// Search is the search associated to the static field
+	Search Search `yaml:"search"`
 	// Help to determine which fields are labels, for example ^prometheus\.labels\.(.*)
 	Labels []string `yaml:"labels"`
 	// Resource associated with the metrics, default is {group: "", resource: "pod"}
 	Resources GroupResource
+}
+
+type Search struct {
+	// MetricPath is the path to be used to get the result from the search
+	MetricPath string `yaml:"metricPath"`
+	// TimestampPath is the path to be used to get the result timestamp
+	TimestampPath string `yaml:"timestampPath"`
+	// Body is the body to be used to search the metric.
+	Body string `json:"body"`
+	// Template is the template version of the body
+	Template *template.Template `yaml:"-"`
+	// MetricResultQuery is the template version of metricPath
+	MetricResultQuery *gojq.Query `yaml:"-"`
+	// TimestampResultQuery is the template version of metricPath
+	TimestampResultQuery *gojq.Query `yaml:"-"`
 }
 
 func (f FieldsSet) findMetadata(fieldName string) *Fields {
@@ -109,6 +131,42 @@ func From(source string) (*Config, error) {
 
 func (c *Config) Metrics(esClient *esv7.Client) ([]provider.CustomMetricInfo, map[string]MetricMetadata, error) {
 	metricRecoder := newRecorder()
+
+	// We first record static fields, they do not require to read the mapping
+	for _, metricSet := range c.MetricSets {
+		for _, field := range metricSet.Fields {
+			if len(field.Name) > 0 {
+				search := field.Search
+				search.Template = template.Must(template.New("").Parse(search.Body))
+				metricResultQuery, err := gojq.Parse(search.MetricPath)
+				if err != nil {
+					klog.Fatalf("Error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
+
+				}
+				search.MetricResultQuery = metricResultQuery
+				timestampResultQuery, err := gojq.Parse(search.TimestampPath)
+				if err != nil {
+					klog.Fatalf("Error while parsing timestampResultQuery for field %s: error: %v", field.Name, err)
+
+				}
+				search.TimestampResultQuery = timestampResultQuery
+				// This is a static field, save the request body and the metric path
+				metricRecoder.indexedMetrics[field.Name] = MetricMetadata{
+					Search:  &search,
+					Indices: metricSet.Indices,
+				}
+				metricRecoder.metrics = append(metricRecoder.metrics, provider.CustomMetricInfo{
+					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
+						Group:    "",
+						Resource: "pod",
+					},
+					Namespaced: true,
+					Metric:     field.Name,
+				})
+			}
+		}
+	}
+
 	for _, metricSet := range c.MetricSets {
 		if err := getMappingFor(metricSet, esClient, metricRecoder); err != nil {
 			return nil, nil, err
@@ -146,7 +204,7 @@ func getMappingFor(metricSet MetricSet, esClient *esv7.Client, recorder *recorde
 	return nil
 }
 
-func (r *recorder) processMappingDocument(mapping interface{}, fieldsSet FieldsSet, indices []string) {
+func (r *recorder) processMappingDocument(mapping interface{}, fields FieldsSet, indices []string) {
 	tm, ok := mapping.(map[string]interface{})
 	if !ok {
 		return
@@ -156,7 +214,7 @@ func (r *recorder) processMappingDocument(mapping interface{}, fieldsSet FieldsS
 	if !ok {
 		return
 	}
-	r._processMappingDocument("", rpm, fieldsSet, indices)
+	r._processMappingDocument("", rpm, fields, indices)
 }
 
 func newRecorder() *recorder {
@@ -167,6 +225,7 @@ func newRecorder() *recorder {
 
 type MetricMetadata struct {
 	Fields  Fields
+	Search  *Search
 	Indices []string
 }
 
@@ -177,6 +236,9 @@ type recorder struct {
 
 func (r *recorder) _processMappingDocument(root string, d map[string]interface{}, fieldsSet FieldsSet, indices []string) {
 	for k, t := range d {
+		if k == "*" {
+			return
+		}
 		if k == "properties" {
 			tm, ok := t.(map[string]interface{})
 			if !ok {
@@ -200,6 +262,9 @@ func (r *recorder) _processMappingDocument(root string, d map[string]interface{}
 			} else {
 				// New metric
 				metricName := fmt.Sprintf("%s.%s", root, k)
+				if strings.HasPrefix(metricName, "prometheus") {
+					fmt.Println("--")
+				}
 				fields := fieldsSet.findMetadata(metricName)
 				if fields == nil {
 					// field does not match a pattern, do not register it as available
