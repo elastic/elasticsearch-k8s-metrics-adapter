@@ -184,9 +184,6 @@ func (p *elasticsearchProvider) ListAllMetrics() []provider.CustomMetricInfo {
 	klog.Info("-> ListAllMetrics()")
 	allMetrics := p.metricLister.GetMetrics()
 	klog.Infof("<- ListAllMetrics(), size: %d", len(allMetrics))
-	for _, m := range allMetrics {
-		klog.Infof(" - %s - %s", m.Metric, m.String())
-	}
 	return allMetrics
 }
 
