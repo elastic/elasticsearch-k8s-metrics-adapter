@@ -89,7 +89,7 @@ func (p *elasticsearchProvider) valueFor(
 	if metadata == nil {
 		return timestampedMetric{}, fmt.Errorf("no metadata for metric %s", info.Metric)
 	}
-	value, err := getMetricForPod(p.esClient, *metadata, name, info.Metric, originalSelector, objects)
+	value, err := getMetricForPod(p.esClient, *metadata, name, info, metricSelector, originalSelector, objects)
 	if err != nil {
 		return timestampedMetric{}, err
 	}

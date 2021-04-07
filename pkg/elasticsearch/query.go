@@ -29,18 +29,21 @@ import (
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	esclient "github.com/elastic/elasticsearch-adapter/pkg/elasticsearch/client"
 	esv7 "github.com/elastic/go-elasticsearch/v7"
+	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 )
 
 func getMetricForPod(
 	esClient *esv7.Client,
 	metadata config.MetricMetadata,
 	name types.NamespacedName,
-	metric string,
+	info provider.CustomMetricInfo,
+	metricSelector labels.Selector,
 	originalSelector labels.Selector,
 	objects []string,
 ) (timestampedMetric, error) {
@@ -64,7 +67,7 @@ func getMetricForPod(
 		tplBuffer := bytes.Buffer{}
 
 		if err := metadata.Search.Template.Execute(&tplBuffer, esclient.CustomQueryParams{
-			Metric:       metric,
+			Metric:       info.Metric,
 			Pod:          name.Name,
 			PodSelectors: podSelectors,
 			Namespace:    name.Namespace,
@@ -76,7 +79,7 @@ func getMetricForPod(
 		query = tplBuffer.String()
 	} else {
 		query = esclient.QueryFor(esclient.QueryParams{
-			Metric: metric,
+			Metric: info.Metric,
 			Name:   name,
 		})
 	}
@@ -144,12 +147,12 @@ func getMetricForPod(
 		}
 	} else {
 		// Get the result from the document.
-		metricDocument, err := getMetricDocument(r)
+		metricDocument, err := getMetricDocument(info, name, metricSelector, r)
 		if err != nil {
 			return timestampedMetric{}, err
 		}
 
-		if value, err = getMetricValue("_source."+metric, metricDocument); err != nil {
+		if value, err = getMetricValue("_source."+info.Metric, metricDocument); err != nil {
 			return timestampedMetric{}, err
 		}
 
@@ -250,10 +253,16 @@ func getMetricValue(path string, doc map[string]interface{}) (float64, error) {
 
 }
 
-func getMetricDocument(doc map[string]interface{}) (map[string]interface{}, error) {
+func getMetricDocument(
+	info provider.CustomMetricInfo,
+	name types.NamespacedName,
+	metricSelector labels.Selector,
+	doc map[string]interface{},
+) (map[string]interface{}, error) {
 	metaHits, hasMetaHits := doc["hits"]
 	if !hasMetaHits {
-		return nil, fmt.Errorf("no hits in %v", metaHits)
+		klog.Errorf("no hits in %v", metaHits)
+		return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, name.Name, metricSelector)
 	}
 
 	var documents interface{}
@@ -265,7 +274,8 @@ func getMetricDocument(doc map[string]interface{}) (map[string]interface{}, erro
 
 	if documents, ok := documents.([]interface{}); ok {
 		if len(documents) == 0 {
-			return nil, fmt.Errorf("no documents in %v", doc)
+			klog.Errorf("no documents in %v", doc)
+			return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, name.Name, metricSelector)
 		}
 		document := documents[0]
 		if result, ok := document.(map[string]interface{}); ok {
