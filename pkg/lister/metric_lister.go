@@ -91,7 +91,7 @@ func (ml *MetricLister) ListAllMetrics() []provider.CustomMetricInfo {
 	ml.m.RLock()
 	defer ml.m.RUnlock()
 	ccm := ml.currentCustomMetrics
-	klog.Info("-> metric_lister.ListAllMetrics() - size = %d", len(ccm))
+	klog.Infof("-> metric_lister.ListAllMetrics() - size = %d", len(ccm))
 	return ccm
 }
 
@@ -113,7 +113,7 @@ func (ml *MetricLister) Start() {
 					break
 				}
 				if i >= (attempts - 1) {
-					klog.Fatalf("Give up after %d esAttempts", attempts)
+					klog.Fatalf("Give up after %d attempts", attempts)
 				}
 				klog.Errorf("Error while fetching metrics list from Elasticsearch: %v, will retry in %s", err, sleep)
 				time.Sleep(sleep)
@@ -141,7 +141,7 @@ func (ml *MetricLister) Start() {
 				klog.Errorf("Error while fetching metrics list from upstream %v: %v, will retry in %s", ml.cfg.Upstream, err, sleep)
 				time.Sleep(sleep)
 			}
-			klog.Fatalf("Give up after %d esAttempts", attempts)
+			klog.Fatalf("Give up after %d attempts", attempts)
 		},
 	)
 }

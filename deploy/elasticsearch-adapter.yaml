@@ -1,19 +1,19 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: elasticsearch-custom-metrics
+  name: elasticsearch-metrics-apiserver
 ---
 ## Default configuration
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: elasticsearch-custom-metrics-config
-  namespace: elasticsearch-custom-metrics
+  namespace: elasticsearch-metrics-apiserver
 data:
   config.yml: |-
     ## upstream can be used to reference an existing or third party metric adapter service.
     #upstream:
-    #  host: https://custom-metrics-apiserver.custom-metrics.svc
+    #  host: https://elasticsearch-metrics-apiserver.custom-metrics.svc
     #  tls:
     #    insecureSkipTLSVerify: true
     ## metricSets defines the Elasticsearch fields to be exposed to the K8S autoscaling controllers.
@@ -103,20 +103,20 @@ data:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: custom-metrics:system:auth-delegator
+  name: elasticsearch-metrics-apiserver:system:auth-delegator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: system:auth-delegator
 subjects:
   - kind: ServiceAccount
-    name: custom-metrics-apiserver
-    namespace: elasticsearch-custom-metrics
+    name: elasticsearch-metrics-apiserver
+    namespace: elasticsearch-metrics-apiserver
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: custom-metrics-auth-reader
+  name: elasticsearch-metrics-apiserver-auth-reader
   namespace: kube-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -124,30 +124,30 @@ roleRef:
   name: extension-apiserver-authentication-reader
 subjects:
   - kind: ServiceAccount
-    name: custom-metrics-apiserver
-    namespace: elasticsearch-custom-metrics
+    name: elasticsearch-metrics-apiserver
+    namespace: elasticsearch-metrics-apiserver
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: custom-metrics-apiserver
-  name: custom-metrics-apiserver
-  namespace: elasticsearch-custom-metrics
+    app: elasticsearch-metrics-apiserver
+  name: elasticsearch-metrics-apiserver
+  namespace: elasticsearch-metrics-apiserver
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: custom-metrics-apiserver
+      app: elasticsearch-metrics-apiserver
   template:
     metadata:
       labels:
-        app: custom-metrics-apiserver
-      name: custom-metrics-apiserver
+        app: elasticsearch-metrics-apiserver
+      name: elasticsearch-metrics-apiserver
     spec:
-      serviceAccountName: custom-metrics-apiserver
+      serviceAccountName: elasticsearch-metrics-apiserver
       containers:
-        - name: custom-metrics-apiserver
+        - name: elasticsearch-metrics-apiserver
           image: gcr.io/elastic-cloud-dev/michael/elasticsearch-metrics-adapter-amd64:latest
           env:
             - name: ELASTICSEARCH_USERNAME
@@ -190,27 +190,27 @@ spec:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: custom-metrics-resource-reader
+  name: elasticsearch-metrics-apiserver-resource-reader
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: custom-metrics-resource-reader
+  name: elasticsearch-metrics-apiserver-resource-reader
 subjects:
   - kind: ServiceAccount
-    name: custom-metrics-apiserver
-    namespace: elasticsearch-custom-metrics
+    name: elasticsearch-metrics-apiserver
+    namespace: elasticsearch-metrics-apiserver
 ---
 kind: ServiceAccount
 apiVersion: v1
 metadata:
-  name: custom-metrics-apiserver
-  namespace: elasticsearch-custom-metrics
+  name: elasticsearch-metrics-apiserver
+  namespace: elasticsearch-metrics-apiserver
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: custom-metrics-apiserver
-  namespace: elasticsearch-custom-metrics
+  name: elasticsearch-metrics-apiserver
+  namespace: elasticsearch-metrics-apiserver
 spec:
   ports:
     - name: https
@@ -220,7 +220,7 @@ spec:
       port: 80
       targetPort: 8080
   selector:
-    app: custom-metrics-apiserver
+    app: elasticsearch-metrics-apiserver
 ---
 apiVersion: apiregistration.k8s.io/v1
 kind: APIService
@@ -228,8 +228,8 @@ metadata:
   name: v1beta1.custom.metrics.k8s.io
 spec:
   service:
-    name: custom-metrics-apiserver
-    namespace: elasticsearch-custom-metrics
+    name: elasticsearch-metrics-apiserver
+    namespace: elasticsearch-metrics-apiserver
   group: custom.metrics.k8s.io
   version: v1beta1
   insecureSkipTLSVerify: true
@@ -242,8 +242,8 @@ metadata:
   name: v1beta2.custom.metrics.k8s.io
 spec:
   service:
-    name: custom-metrics-apiserver
-    namespace: elasticsearch-custom-metrics
+    name: elasticsearch-metrics-apiserver
+    namespace: elasticsearch-metrics-apiserver
   group: custom.metrics.k8s.io
   version: v1beta2
   insecureSkipTLSVerify: true
@@ -253,7 +253,7 @@ spec:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: custom-metrics-server-resources
+  name: elasticsearch-metrics-apiserver-resources
 rules:
   - apiGroups:
       - custom.metrics.k8s.io
@@ -263,7 +263,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: custom-metrics-resource-reader
+  name: elasticsearch-metrics-apiserver-resource-reader
 rules:
   - apiGroups:
       - ""
@@ -278,11 +278,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: hpa-controller-custom-metrics
+  name: hpa-controller-elasticsearch-metrics-apiserver
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: custom-metrics-server-resources
+  name: elasticsearch-metrics-apiserver-resources
 subjects:
   - kind: ServiceAccount
     name: horizontal-pod-autoscaler
