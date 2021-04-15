@@ -20,8 +20,14 @@ import (
 	"flag"
 	"os"
 
+	"github.com/elastic/elasticsearch-adapter/pkg/common"
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/elastic/elasticsearch-adapter/pkg/elasticsearch"
+	"github.com/elastic/elasticsearch-adapter/pkg/lister"
+	provider2 "github.com/elastic/elasticsearch-adapter/pkg/provider"
+	esclient "github.com/elastic/elasticsearch-adapter/pkg/provider/providers/elasticsearch/client"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
+	custom_metrics_client "k8s.io/metrics/pkg/client/custom_metrics"
 
 	// Load all auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -37,7 +43,6 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 
 	generatedopenapi "github.com/elastic/elasticsearch-adapter/generated/openapi"
-	esclient "github.com/elastic/elasticsearch-adapter/pkg/elasticsearch/client"
 )
 
 type ElasticsearchAdapter struct {
@@ -46,7 +51,7 @@ type ElasticsearchAdapter struct {
 }
 
 func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
-	cfg, err := config.Default()
+	adapterCfg, err := config.Default()
 	if err != nil {
 		klog.Fatalf("unable to parse adapter configuration: %v", err)
 	}
@@ -58,7 +63,7 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 
 	mapper, err := a.RESTMapper()
 	if err != nil {
-		klog.Fatalf("unable to construct discovery REST mapper: %v", err)
+		klog.Fatalf("unable to construct client REST mapper: %v", err)
 	}
 
 	esClient, err := esclient.NewElasticsearchClient()
@@ -66,7 +71,41 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 		klog.Fatalf("unable to construct Elasticsearch client: %v", err)
 	}
 
-	return elasticsearch.NewProvider(cfg, client, mapper, esClient)
+	var metricLister common.MetricLister
+	if adapterCfg.Upstream.IsDefined() {
+		discoveryClient, err := a.DiscoveryClient()
+		if err != nil {
+			klog.Fatalf("unable to construct discoveryClient client: %v", err)
+		}
+		apiVersionsGetter := custom_metrics_client.NewAvailableAPIsGetter(discoveryClient)
+
+		clientCfg, err := a.ClientConfig()
+		if err != nil {
+			klog.Fatalf("unable to construct Kubernetes client config: %v", err)
+		}
+		kubeClient, err := kubernetes.NewForConfig(clientCfg)
+		if err != nil {
+			klog.Fatalf("unable to construct Kubernetes client: %v", err)
+		}
+		upstreamConfig, err := adapterCfg.Upstream.ClientConfig(kubeClient, clientCfg)
+		if err != nil {
+			klog.Fatalf("unable to construct discovery client for upstream: %v", err)
+		}
+		upstreamRestClient, err := discovery.NewDiscoveryClientForConfig(upstreamConfig)
+		if err != nil {
+			klog.Fatalf("unable to construct discovery client for upstream: %v", err)
+		}
+		upstreamMetricClient := custom_metrics_client.NewForConfig(upstreamConfig, mapper, apiVersionsGetter)
+		metricLister = lister.NewMetricListerWithUpstream(adapterCfg, esClient, client, mapper, upstreamMetricClient, upstreamRestClient)
+	} else {
+		metricLister = lister.NewMetricLister(adapterCfg, client, mapper, esClient)
+	}
+
+	// Create and start metric lister
+	metricLister.Start()
+
+	// Create provider
+	return provider2.NewAggregationProvider(metricLister)
 }
 
 func main() {

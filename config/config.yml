@@ -1,0 +1,89 @@
+## upstream can be used to reference an existing or third party metric adapter service.
+#upstream:
+#  host: https://custom-metrics-apiserver.custom-metrics.svc
+#  tls:
+#    insecureSkipTLSVerify: true
+
+## metricSets defines the Elasticsearch fields to be exposed to the K8S autoscaling controllers.
+## This section requires ELASTICSEARCH_URL, ELASTICSEARCH_USERNAME and ELASTICSEARCH_PASSWORD to be set as env. variables.
+metricSets:
+  - indices: [ 'metricbeat-*' ]
+    fields:
+      - patterns: [ '^prometheus\.metrics\.' ]
+        labels: [ '^prometheus\.labels\.(.*)' ]
+      - name: "kibana.stats.load.pod" # Kibana load per Pod
+        search: # This is an example of an advanced custom search, calculated using an aggregation.
+          metricPath: ".aggregations.custom_name.buckets.[0].pod_load.value" # Path to the metric value.
+          timestampPath: ".aggregations.custom_name.buckets.[0].timestamp.value_as_string" # Path to the timestamp.
+          body: >
+            {
+              "query": {
+                "bool": {
+                  "must": [
+                    {
+                      "match": {
+                        "kibana.stats.name": "{{ index .PodSelectors "kibana.k8s.elastic.co/name" }}"
+                      }
+                    },
+                    {
+                      "match": {
+                        "kubernetes.namespace": "{{ .Namespace }}"
+                      }
+                    }
+                  ],
+                  "filter": [
+                    {
+                      "exists": {
+                        "field": "kibana.stats.load"
+                      }
+                    },
+                    {
+                      "range": {
+                        "@timestamp": {
+                          "gte": "now-2m"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "size": 0,
+              "aggs": {
+                "custom_name": {
+                  "terms": {
+                    "field": "kibana.stats.name"
+                  },
+                  "aggs": {
+                    "pods_count": {
+                      "cardinality": {
+                        "field": "kubernetes.pod.name"
+                      }
+                    },
+                    "maxLoad": {
+                      "max": {
+                        "field": "kibana.stats.load"
+                      }
+                    },
+                    "timestamp": {
+                      "max": {
+                        "field": "@timestamp"
+                      }
+                    },
+                    "pod_load": {
+                      "bucket_script": {
+                        "buckets_path": {
+                          "load": "maxLoad"
+                        },
+                        "script": "params.load / {{ len .Objects }}"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+      - patterns: [ '^kibana\.stats\.' ]
+#        resources:
+#          - service.name:
+#              resource: "kibana"
+#          - kubernetes.pod.name:
+#              resource: "pod"
