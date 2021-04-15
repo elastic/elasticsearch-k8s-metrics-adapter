@@ -12,10 +12,10 @@ metadata:
 data:
   config.yml: |-
     ## upstream can be used to reference an existing or third party metric adapter service.
-    #upstream:
-    #  host: https://elasticsearch-metrics-apiserver.custom-metrics.svc
-    #  tls:
-    #    insecureSkipTLSVerify: true
+    upstream:
+      host: https://custom-metrics-apiserver.custom-metrics.svc
+      tls:
+        insecureSkipTLSVerify: true
     ## metricSets defines the Elasticsearch fields to be exposed to the K8S autoscaling controllers.
     ## This section requires ELASTICSEARCH_URL, ELASTICSEARCH_USERNAME and ELASTICSEARCH_PASSWORD to be set as env. variables.
     metricSets:
@@ -287,3 +287,16 @@ subjects:
   - kind: ServiceAccount
     name: horizontal-pod-autoscaler
     namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: elasticsearch-metrics-apiserver-proxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: elasticsearch-metrics-apiserver-resources
+subjects:
+  - kind: ServiceAccount
+    name: elasticsearch-metrics-apiserver
+    namespace: elasticsearch-metrics-apiserver
