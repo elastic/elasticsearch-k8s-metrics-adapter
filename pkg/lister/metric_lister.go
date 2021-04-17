@@ -29,6 +29,8 @@ type MetricLister struct {
 	upstreamMetricClient custom_metrics_client.CustomMetricsClient
 	upstreamRestClient   *discovery.DiscoveryClient
 
+	defaultMetricsProvider provider.MetricsProvider
+
 	// Current state
 	currentCustomMetrics []provider.CustomMetricInfo
 	metadata             map[string]common.MetricMetadata
@@ -74,6 +76,16 @@ func NewMetricListerWithUpstream(
 		currentCustomMetrics: nil,
 		m:                    sync.RWMutex{},
 	}
+}
+
+func (ml *MetricLister) GetMetricsProvider(metric string) provider.MetricsProvider {
+	ml.m.RLock()
+	defer ml.m.RUnlock()
+	metadata, exists := ml.metadata[metric]
+	if !exists {
+		return ml.defaultMetricsProvider
+	}
+	return metadata.MetricsProvider
 }
 
 func (ml *MetricLister) GetMetricMetadata(metric string) *common.MetricMetadata {
@@ -123,6 +135,7 @@ func (ml *MetricLister) Start() {
 				return
 			}
 			upstreamProvider := upstream.NewUpstreamProvider(ml.mapper, ml.upstreamMetricClient, ml)
+			ml.defaultMetricsProvider = upstreamProvider
 			attempts = 10
 			for i := 0; ; i++ {
 				klog.Infof("Fetching metric list from upstream metric adapter %v, attempt %d", ml.cfg.Upstream.Host, i)

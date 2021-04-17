@@ -44,20 +44,20 @@ func NewAggregationProvider(
 
 func (p *aggregationProvider) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
 	klog.Infof("-> aggregation.GetMetricByName(name=%v,info=%v,metricSelector=%v)", name, info, metricSelector)
-	metricMetadata := p.MetricLister.GetMetricMetadata(info.Metric)
-	if metricMetadata == nil {
+	metricsProvider := p.MetricLister.GetMetricsProvider(info.Metric)
+	if metricsProvider == nil {
 		return nil, provider.NewMetricNotFoundError(info.GroupResource, info.Metric)
 	}
-	return metricMetadata.MetricsProvider.GetMetricByName(name, info, metricSelector)
+	return metricsProvider.GetMetricByName(name, info, metricSelector)
 }
 
 func (p *aggregationProvider) GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
 	klog.Infof("-> aggregation.GetMetricBySelector(namespace=%v,selector=%v,info=%v,metricSelector=%v)", namespace, selector, info, metricSelector)
-	metricMetadata := p.MetricLister.GetMetricMetadata(info.Metric)
-	if metricMetadata == nil {
+	metricsProvider := p.MetricLister.GetMetricsProvider(info.Metric)
+	if metricsProvider == nil { // No default metrics provider
 		return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, "", metricSelector)
 	}
-	return metricMetadata.MetricsProvider.GetMetricBySelector(namespace, selector, info, metricSelector)
+	return metricsProvider.GetMetricBySelector(namespace, selector, info, metricSelector)
 }
 
 func (p *aggregationProvider) GetExternalMetric(_ string, _ labels.Selector, _ provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {

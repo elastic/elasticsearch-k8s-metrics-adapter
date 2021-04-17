@@ -45,7 +45,7 @@ func NewUpstreamProvider(
 	mapper apimeta.RESTMapper,
 	upstreamClient custom_metrics_client.CustomMetricsClient,
 	metricLister common.MetricLister,
-) *upstreamProvider {
+) provider.MetricsProvider {
 	return &upstreamProvider{
 		MetricLister:   metricLister,
 		mapper:         mapper,
