@@ -17,11 +17,14 @@
 package elasticsearch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/elastic/elasticsearch-adapter/pkg/common"
+	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
 	esv7 "github.com/elastic/go-elasticsearch/v7"
+	"go.elastic.co/apm"
 	apierr "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,6 +45,7 @@ type elasticsearchProvider struct {
 	client   dynamic.Interface
 	mapper   apimeta.RESTMapper
 	esClient *esv7.Client
+	tracer   *apm.Tracer
 }
 
 // NewProvider returns an instance of the Elasticsearch provider, along with its restful.WebService that opens endpoints to post custom metrics stored in Elasticsearch.
@@ -50,33 +54,37 @@ func NewProvider(
 	mapper apimeta.RESTMapper,
 	esClient *esv7.Client,
 	metricLister common.MetricLister,
+	tracer *apm.Tracer,
 ) provider.MetricsProvider {
 	return &elasticsearchProvider{
 		MetricLister: metricLister,
 		client:       client,
 		mapper:       mapper,
 		esClient:     esClient,
+		tracer:       tracer,
 	}
 }
 
 // valueFor is a helper function to get just the value of a specific metric
 func (p *elasticsearchProvider) valueFor(
+	ctx *context.Context,
 	info provider.CustomMetricInfo,
 	name types.NamespacedName,
 	originalSelector labels.Selector,
 	objects []string,
 	metricSelector labels.Selector,
 ) (common.TimestampedMetric, error) {
+	defer tracing.Span(ctx)()
 	info, _, err := info.Normalized(p.mapper)
 	if err != nil {
 		return common.TimestampedMetric{}, err
 	}
 
-	metadata := p.MetricLister.GetMetricMetadata(info.Metric)
+	metadata := p.MetricLister.GetMetricMetadata(ctx, info.Metric)
 	if metadata == nil {
 		return common.TimestampedMetric{}, fmt.Errorf("no metadata for metric %s", info.Metric)
 	}
-	value, err := getMetricForPod(p.esClient, *metadata, name, info, metricSelector, originalSelector, objects)
+	value, err := getMetricForPod(ctx, p.esClient, *metadata, name, info, metricSelector, originalSelector, objects)
 	if err != nil {
 		return common.TimestampedMetric{}, err
 	}
@@ -92,12 +100,14 @@ func (p *elasticsearchProvider) valueFor(
 
 // metricFor is a helper function which formats a value, metric, and object info into a MetricValue which can be returned by the metrics API
 func (p *elasticsearchProvider) metricFor(
+	ctx *context.Context,
 	timeStampedMetric common.TimestampedMetric,
 	name types.NamespacedName,
 	selector labels.Selector,
 	info provider.CustomMetricInfo,
 	metricSelector labels.Selector,
 ) (*custom_metrics.MetricValue, error) {
+	defer tracing.Span(ctx)()
 	objRef, err := helpers.ReferenceFor(p.mapper, name, info)
 	if err != nil {
 		return nil, err
@@ -124,7 +134,14 @@ func (p *elasticsearchProvider) metricFor(
 }
 
 // metricsFor is a wrapper used by GetMetricBySelector to format several metrics which match a resource selector
-func (p *elasticsearchProvider) metricsFor(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
+func (p *elasticsearchProvider) metricsFor(
+	ctx *context.Context,
+	namespace string,
+	selector labels.Selector,
+	info provider.CustomMetricInfo,
+	metricSelector labels.Selector,
+) (*custom_metrics.MetricValueList, error) {
+	defer tracing.Span(ctx)()
 	klog.Infof(fmt.Sprintf("metricsFor(%s,%s)", selector, info))
 	names, err := helpers.ListObjectNames(p.mapper, p.client, namespace, selector, info)
 	if err != nil {
@@ -134,7 +151,7 @@ func (p *elasticsearchProvider) metricsFor(namespace string, selector labels.Sel
 	res := make([]custom_metrics.MetricValue, 0, len(names))
 	for _, name := range names {
 		namespacedName := types.NamespacedName{Name: name, Namespace: namespace}
-		value, err := p.valueFor(info, namespacedName, selector, names, metricSelector)
+		value, err := p.valueFor(ctx, info, namespacedName, selector, names, metricSelector)
 		if err != nil {
 			if apierr.IsNotFound(err) {
 				continue
@@ -142,7 +159,7 @@ func (p *elasticsearchProvider) metricsFor(namespace string, selector labels.Sel
 			return nil, err
 		}
 
-		metric, err := p.metricFor(value, namespacedName, selector, info, metricSelector)
+		metric, err := p.metricFor(ctx, value, namespacedName, selector, info, metricSelector)
 		if err != nil {
 			return nil, err
 		}
@@ -155,17 +172,21 @@ func (p *elasticsearchProvider) metricsFor(namespace string, selector labels.Sel
 }
 
 func (p *elasticsearchProvider) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
+	t, ctx := tracing.NewTransaction(context.TODO(), p.tracer, "elasticsearch-provider", "GetMetricBySelector")
+	defer tracing.EndTransaction(t)
 	klog.Infof("elasticsearch.GetMetricByName(name=%v,info=%v,metricSelector=%v)", name, info, metricSelector)
-	value, err := p.valueFor(info, name, labels.NewSelector(), []string{}, metricSelector)
+	value, err := p.valueFor(&ctx, info, name, labels.NewSelector(), []string{}, metricSelector)
 	if err != nil {
 		return nil, err
 	}
-	return p.metricFor(value, name, labels.Everything(), info, metricSelector)
+	return p.metricFor(&ctx, value, name, labels.Everything(), info, metricSelector)
 }
 
 func (p *elasticsearchProvider) GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
+	t, ctx := tracing.NewTransaction(context.TODO(), p.tracer, "elasticsearch-provider", "GetMetricBySelector")
+	defer tracing.EndTransaction(t)
 	klog.Infof("-> elasticsearchProvider.GetMetricBySelector(namespace=%v,selector=%v,info=%v,metricSelector=%v)", namespace, selector, info, metricSelector)
-	return p.metricsFor(namespace, selector, info, metricSelector)
+	return p.metricsFor(&ctx, namespace, selector, info, metricSelector)
 }
 
 func (p *elasticsearchProvider) GetExternalMetric(_ string, _ labels.Selector, _ provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {

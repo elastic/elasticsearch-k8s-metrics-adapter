@@ -1,6 +1,8 @@
 package common
 
 import (
+	"context"
+
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 )
@@ -12,7 +14,7 @@ type MetricLister interface {
 	ListAllMetrics() []provider.CustomMetricInfo
 
 	// GetMetricMetadata returns some metadata for a given metric.
-	GetMetricMetadata(metric string) *MetricMetadata
+	GetMetricMetadata(ctx *context.Context, metric string) *MetricMetadata
 
 	// GetMetricsProvider returns the metrics provider to be used to get a metric or nil if none.
 	GetMetricsProvider(metric string) provider.MetricsProvider

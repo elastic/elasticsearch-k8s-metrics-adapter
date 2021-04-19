@@ -1,6 +1,23 @@
+// Licensed to Elasticsearch B.V. under one or more contributor
+// license agreements. Elasticsearch B.V. licenses this file to
+// you under the Apache License, Version 2.0 (the "License");
+// you may  not use this file except in compliance with the
+// License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package lister
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -8,8 +25,10 @@ import (
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"github.com/elastic/elasticsearch-adapter/pkg/provider/providers/elasticsearch"
 	"github.com/elastic/elasticsearch-adapter/pkg/provider/providers/upstream"
+	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
 	esv7 "github.com/elastic/go-elasticsearch/v7"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
+	"go.elastic.co/apm"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -38,6 +57,8 @@ type MetricLister struct {
 	// sync variables
 	once sync.Once
 	m    sync.RWMutex
+
+	tracer *apm.Tracer
 }
 
 func NewMetricLister(
@@ -45,6 +66,7 @@ func NewMetricLister(
 	client dynamic.Interface,
 	mapper apimeta.RESTMapper,
 	esClient *esv7.Client,
+	tracer *apm.Tracer,
 ) *MetricLister {
 	return &MetricLister{
 		cfg:                  cfg,
@@ -54,6 +76,7 @@ func NewMetricLister(
 		once:                 sync.Once{},
 		currentCustomMetrics: nil,
 		m:                    sync.RWMutex{},
+		tracer:               tracer,
 	}
 }
 
@@ -64,6 +87,7 @@ func NewMetricListerWithUpstream(
 	mapper apimeta.RESTMapper,
 	upstreamMetricClient custom_metrics_client.CustomMetricsClient,
 	upstreamRestClient *discovery.DiscoveryClient,
+	tracer *apm.Tracer,
 ) *MetricLister {
 	return &MetricLister{
 		cfg:                  cfg,
@@ -75,6 +99,7 @@ func NewMetricListerWithUpstream(
 		once:                 sync.Once{},
 		currentCustomMetrics: nil,
 		m:                    sync.RWMutex{},
+		tracer:               tracer,
 	}
 }
 
@@ -88,7 +113,8 @@ func (ml *MetricLister) GetMetricsProvider(metric string) provider.MetricsProvid
 	return metadata.MetricsProvider
 }
 
-func (ml *MetricLister) GetMetricMetadata(metric string) *common.MetricMetadata {
+func (ml *MetricLister) GetMetricMetadata(ctx *context.Context, metric string) *common.MetricMetadata {
+	defer tracing.Span(ctx)()
 	ml.m.RLock()
 	defer ml.m.RUnlock()
 	metadata, exists := ml.metadata[metric]
@@ -99,6 +125,8 @@ func (ml *MetricLister) GetMetricMetadata(metric string) *common.MetricMetadata 
 }
 
 func (ml *MetricLister) ListAllMetrics() []provider.CustomMetricInfo {
+	t, _ := tracing.NewTransaction(context.TODO(), ml.tracer, "metric_lister", "ListAllMetrics")
+	defer tracing.EndTransaction(t)
 	klog.Info("-> metric_lister.ListAllMetrics()")
 	ml.m.RLock()
 	defer ml.m.RUnlock()
@@ -110,7 +138,10 @@ func (ml *MetricLister) ListAllMetrics() []provider.CustomMetricInfo {
 func (ml *MetricLister) Start() {
 	ml.once.Do(
 		func() {
-			esProvider := elasticsearch.NewProvider(ml.client, ml.mapper, ml.esClient, ml)
+			t, _ := tracing.NewTransaction(context.TODO(), ml.tracer, "metric_lister", "Start")
+			defer tracing.EndTransaction(t)
+
+			esProvider := elasticsearch.NewProvider(ml.client, ml.mapper, ml.esClient, ml, ml.tracer)
 			ml.m.Lock()
 			defer ml.m.Unlock()
 			attempts := 10
@@ -134,7 +165,7 @@ func (ml *MetricLister) Start() {
 			if !ml.cfg.Upstream.IsDefined() {
 				return
 			}
-			upstreamProvider := upstream.NewUpstreamProvider(ml.mapper, ml.upstreamMetricClient, ml)
+			upstreamProvider := upstream.NewUpstreamProvider(ml.mapper, ml.upstreamMetricClient, ml, ml.tracer)
 			ml.defaultMetricsProvider = upstreamProvider
 			attempts = 10
 			for i := 0; ; i++ {

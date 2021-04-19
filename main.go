@@ -25,6 +25,8 @@ import (
 	"github.com/elastic/elasticsearch-adapter/pkg/lister"
 	provider2 "github.com/elastic/elasticsearch-adapter/pkg/provider"
 	esclient "github.com/elastic/elasticsearch-adapter/pkg/provider/providers/elasticsearch/client"
+	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
+	"go.elastic.co/apm"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	custom_metrics_client "k8s.io/metrics/pkg/client/custom_metrics"
@@ -71,6 +73,8 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 		klog.Fatalf("unable to construct Elasticsearch client: %v", err)
 	}
 
+	tracer := createTracer()
+
 	var metricLister common.MetricLister
 	if adapterCfg.Upstream.IsDefined() {
 		discoveryClient, err := a.DiscoveryClient()
@@ -96,16 +100,30 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 			klog.Fatalf("unable to construct discovery client for upstream: %v", err)
 		}
 		upstreamMetricClient := custom_metrics_client.NewForConfig(upstreamConfig, mapper, apiVersionsGetter)
-		metricLister = lister.NewMetricListerWithUpstream(adapterCfg, esClient, client, mapper, upstreamMetricClient, upstreamRestClient)
+		metricLister = lister.NewMetricListerWithUpstream(adapterCfg, esClient, client, mapper, upstreamMetricClient, upstreamRestClient, tracer)
 	} else {
-		metricLister = lister.NewMetricLister(adapterCfg, client, mapper, esClient)
+		metricLister = lister.NewMetricLister(adapterCfg, client, mapper, esClient, tracer)
 	}
 
 	// Create and start metric lister
 	metricLister.Start()
 
 	// Create provider
-	return provider2.NewAggregationProvider(metricLister)
+	return provider2.NewAggregationProvider(metricLister, tracer)
+}
+
+func createTracer() *apm.Tracer {
+	if tracing.IsEnabled() {
+		t, err := apm.NewTracer("elasticsearch-metrics-adapter", "0.0.1")
+		if err != nil {
+			// don't fail the application because tracing fails
+			klog.Errorf("failed to created tracer: %s ", err)
+			return nil
+		}
+		t.SetLogger(&tracing.Logger{})
+		return t
+	}
+	return nil
 }
 
 func main() {

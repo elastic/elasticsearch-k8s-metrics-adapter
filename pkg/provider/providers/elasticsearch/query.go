@@ -28,7 +28,9 @@ import (
 
 	"github.com/elastic/elasticsearch-adapter/pkg/common"
 	esclient "github.com/elastic/elasticsearch-adapter/pkg/provider/providers/elasticsearch/client"
+	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
 	esv7 "github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -39,6 +41,7 @@ import (
 )
 
 func getMetricForPod(
+	ctx *context.Context,
 	esClient *esv7.Client,
 	metadata common.MetricMetadata,
 	name types.NamespacedName,
@@ -47,7 +50,7 @@ func getMetricForPod(
 	originalSelector labels.Selector,
 	objects []string,
 ) (common.TimestampedMetric, error) {
-
+	defer tracing.Span(ctx)()
 	var query string
 	if metadata.Search != nil {
 		// User specified a custom query
@@ -84,13 +87,7 @@ func getMetricForPod(
 		})
 	}
 
-	res, err := esClient.Search(
-		esClient.Search.WithContext(context.Background()),
-		esClient.Search.WithIndex(metadata.Indices...),
-		esClient.Search.WithBody(strings.NewReader(query)),
-		esClient.Search.WithTrackTotalHits(true),
-		esClient.Search.WithPretty(),
-	)
+	res, err := search(ctx, esClient, metadata, query)
 	if err != nil {
 		return common.TimestampedMetric{}, err
 	}
@@ -152,11 +149,11 @@ func getMetricForPod(
 			return common.TimestampedMetric{}, err
 		}
 
-		if value, err = getMetricValue("_source."+info.Metric, metricDocument); err != nil {
+		if value, err = getMetricValue(ctx, "_source."+info.Metric, metricDocument); err != nil {
 			return common.TimestampedMetric{}, err
 		}
 
-		if timestamp, err = getTimestampFromDocument("_source.@timestamp", metricDocument); err != nil {
+		if timestamp, err = getTimestampFromDocument(ctx, "_source.@timestamp", metricDocument); err != nil {
 			return common.TimestampedMetric{}, err
 		}
 	}
@@ -172,6 +169,17 @@ func getMetricForPod(
 		Value:     *q,
 		Timestamp: timestamp,
 	}, nil
+}
+
+func search(ctx *context.Context, esClient *esv7.Client, metadata common.MetricMetadata, query string) (*esapi.Response, error) {
+	defer tracing.Span(ctx)()
+	return esClient.Search(
+		esClient.Search.WithContext(*ctx),
+		esClient.Search.WithIndex(metadata.Indices...),
+		esClient.Search.WithBody(strings.NewReader(query)),
+		esClient.Search.WithTrackTotalHits(true),
+		esClient.Search.WithPretty(),
+	)
 }
 
 func getFloat(v interface{}) (float64, error) {
@@ -214,7 +222,8 @@ func getValue(path string, doc map[string]interface{}) (interface{}, error) {
 	return 0, fmt.Errorf("not a document: %v", rootDoc)
 }
 
-func getTimestampFromDocument(path string, doc map[string]interface{}) (metav1.Time, error) {
+func getTimestampFromDocument(ctx *context.Context, path string, doc map[string]interface{}) (metav1.Time, error) {
+	defer tracing.Span(ctx)()
 	v, err := getValue(path, doc)
 	if err != nil {
 		return metav1.Unix(0, 0), err
@@ -236,7 +245,8 @@ func getTimestamp(v interface{}) (metav1.Time, error) {
 	return metav1.Unix(0, 0), fmt.Errorf("not a string: %v", v)
 }
 
-func getMetricValue(path string, doc map[string]interface{}) (float64, error) {
+func getMetricValue(ctx *context.Context, path string, doc map[string]interface{}) (float64, error) {
+	defer tracing.Span(ctx)()
 	raw, err := getValue(path, doc)
 	if err != nil {
 		return 0, err

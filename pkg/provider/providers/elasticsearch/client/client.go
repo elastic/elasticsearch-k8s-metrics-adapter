@@ -23,6 +23,7 @@ import (
 	"os"
 
 	esv7 "github.com/elastic/go-elasticsearch/v7"
+	"go.elastic.co/apm/module/apmelasticsearch"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -94,13 +95,14 @@ func NewElasticsearchClient() (*esv7.Client, error) {
 		return nil, mandatoryEnvError(vElasticsearchPassword)
 	}
 
+	unsecureTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	cfg := esv7.Config{
 		Username:  elasticsearchUsername,
 		Password:  elasticsearchPassword,
 		Addresses: []string{elasticsearchURL},
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
+		Transport: apmelasticsearch.WrapRoundTripper(unsecureTransport),
 	}
 
 	return esv7.NewClient(cfg)

@@ -21,6 +21,7 @@ import (
 
 	"github.com/elastic/elasticsearch-adapter/pkg/common"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
+	"go.elastic.co/apm"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -31,14 +32,17 @@ import (
 // elasticsearchProvider is an implementation of provider.MetricsProvider which retrieve metrics from an Elasticsearch cluster.
 type aggregationProvider struct {
 	common.MetricLister
+	tracer *apm.Tracer
 }
 
 // NewAggregationProvider returns an instance of the Elasticsearch provider, along with its restful.WebService that opens endpoints to post custom metrics stored in Elasticsearch.
 func NewAggregationProvider(
 	metricLister common.MetricLister,
+	tracer *apm.Tracer,
 ) provider.MetricsProvider {
 	return &aggregationProvider{
 		MetricLister: metricLister,
+		tracer:       tracer,
 	}
 }
 
