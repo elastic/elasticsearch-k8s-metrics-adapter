@@ -17,28 +17,34 @@
 package config
 
 import (
-	"context"
-	_ "embed"
-	"encoding/json"
-	"fmt"
+	"io/ioutil"
 	"regexp"
-	"sync"
-	"time"
+	"text/template"
 
-	esv7 "github.com/elastic/go-elasticsearch/v7"
-	"github.com/elastic/go-elasticsearch/v7/esapi"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/klog/v2"
-
+	"github.com/itchyny/gojq"
 	"gopkg.in/yaml.v2"
+	"k8s.io/klog/v2"
 )
 
-//go:embed default.yaml
-var defaultConfig string
+const configPath = "config/config.yml"
+
+// ObjectSelector defines a reference to a Kubernetes object.
+type ObjectSelector struct {
+	// Name of the Kubernetes object.
+	Name string `json:"name"`
+	// Namespace of the Kubernetes object. If empty, defaults to the current namespace.
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// IsDefined checks if the object selector is not nil and has a name.
+// Namespace is not mandatory as it may be inherited by the parent object.
+func (o *HTTPClientConfig) IsDefined() bool {
+	return o != nil
+}
 
 type Config struct {
-	MetricSets MetricSets `yaml:"metricSets"`
+	Upstream   *HTTPClientConfig `yaml:"upstream,omitempty"`
+	MetricSets MetricSets        `yaml:"metricSets"`
 }
 
 type MetricSets []MetricSet
@@ -55,13 +61,32 @@ type Fields struct {
 	// Filter which fields are exposed, for example { "^prometheus\.metrics\." }
 	Patterns         []string        `yaml:"patterns"`
 	compiledPatterns []regexp.Regexp `yaml:"-"`
+	// Name is the name of a static field
+	Name string `yaml:"name"`
+	// Search is the search associated to the static field
+	Search Search `yaml:"search"`
 	// Help to determine which fields are labels, for example ^prometheus\.labels\.(.*)
 	Labels []string `yaml:"labels"`
 	// Resource associated with the metrics, default is {group: "", resource: "pod"}
 	Resources GroupResource
 }
 
-func (f FieldsSet) findMetadata(fieldName string) *Fields {
+type Search struct {
+	// MetricPath is the path to be used to get the result from the search
+	MetricPath string `yaml:"metricPath"`
+	// TimestampPath is the path to be used to get the result timestamp
+	TimestampPath string `yaml:"timestampPath"`
+	// Body is the body to be used to search the metric.
+	Body string `json:"body"`
+	// Template is the template version of the body
+	Template *template.Template `yaml:"-"`
+	// MetricResultQuery is the template version of metricPath
+	MetricResultQuery *gojq.Query `yaml:"-"`
+	// TimestampResultQuery is the template version of metricPath
+	TimestampResultQuery *gojq.Query `yaml:"-"`
+}
+
+func (f FieldsSet) FindMetadata(fieldName string) *Fields {
 	for _, fieldSet := range f {
 		for _, pattern := range fieldSet.compiledPatterns {
 			if pattern.MatchString(fieldName) {
@@ -78,13 +103,18 @@ type GroupResource struct {
 }
 
 func Default() (*Config, error) {
-	return From(defaultConfig)
+	klog.Infof("Reading adapter configuration from %s", configPath)
+	config, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return From(config)
 }
 
-func From(source string) (*Config, error) {
+func From(source []byte) (*Config, error) {
 	config := Config{}
 	// Read file as yaml
-	err := yaml.Unmarshal([]byte(source), &config)
+	err := yaml.Unmarshal(source, &config)
 	if err != nil {
 		return nil, err
 	}
@@ -105,180 +135,4 @@ func From(source string) (*Config, error) {
 	}
 
 	return &config, nil
-}
-
-func (c *Config) Metrics(esClient *esv7.Client) ([]provider.CustomMetricInfo, map[string]MetricMetadata, error) {
-	metricRecoder := newRecorder()
-	for _, metricSet := range c.MetricSets {
-		if err := getMappingFor(metricSet, esClient, metricRecoder); err != nil {
-			return nil, nil, err
-		}
-	}
-	return metricRecoder.metrics, metricRecoder.indexedMetrics, nil
-}
-
-func getMappingFor(metricSet MetricSet, esClient *esv7.Client, recorder *recorder) error {
-	req := esapi.IndicesGetMappingRequest{Index: metricSet.Indices}
-	res, err := req.Do(context.Background(), esClient)
-	if err != nil {
-		return fmt.Errorf("discevery error, got response: %s", err)
-	}
-	defer res.Body.Close()
-	if res.IsError() {
-		return fmt.Errorf("[%s] Error getting index mapping %v", res.Status(), metricSet.Indices)
-	} else {
-		// Deserialize the response into a map.
-		var r map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-			return fmt.Errorf("error parsing the response body: %s", err)
-		} else {
-			// Process mapping
-			for _, indexMapping := range r {
-				m := indexMapping.(map[string]interface{})
-				mapping, hasMapping := m["mappings"]
-				if !hasMapping {
-					return fmt.Errorf("discovery error: no 'mapping' field in %s", metricSet.Indices)
-				}
-				recorder.processMappingDocument(mapping, metricSet.Fields, metricSet.Indices)
-			}
-		}
-	}
-	return nil
-}
-
-func (r *recorder) processMappingDocument(mapping interface{}, fieldsSet FieldsSet, indices []string) {
-	tm, ok := mapping.(map[string]interface{})
-	if !ok {
-		return
-	}
-	rp := tm["properties"]
-	rpm, ok := rp.(map[string]interface{})
-	if !ok {
-		return
-	}
-	r._processMappingDocument("", rpm, fieldsSet, indices)
-}
-
-func newRecorder() *recorder {
-	return &recorder{
-		indexedMetrics: make(map[string]MetricMetadata),
-	}
-}
-
-type MetricMetadata struct {
-	Fields  Fields
-	Indices []string
-}
-
-type recorder struct {
-	metrics        []provider.CustomMetricInfo
-	indexedMetrics map[string]MetricMetadata
-}
-
-func (r *recorder) _processMappingDocument(root string, d map[string]interface{}, fieldsSet FieldsSet, indices []string) {
-	for k, t := range d {
-		if k == "properties" {
-			tm, ok := t.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			r._processMappingDocument(root, tm, fieldsSet, indices)
-		} else {
-			// Is there a properties child ?
-			child, ok := t.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if _, hasProperties := child["properties"]; hasProperties {
-				var newRoot string
-				if root == "" {
-					newRoot = k
-				} else {
-					newRoot = fmt.Sprintf("%s.%s", root, k)
-				}
-				r._processMappingDocument(newRoot, child, fieldsSet, indices)
-			} else {
-				// New metric
-				metricName := fmt.Sprintf("%s.%s", root, k)
-				fields := fieldsSet.findMetadata(metricName)
-				if fields == nil {
-					// field does not match a pattern, do not register it as available
-					continue
-				}
-				r.metrics = append(r.metrics, provider.CustomMetricInfo{
-					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
-						Group:    "",
-						Resource: "pod",
-					},
-					Namespaced: true,
-					Metric:     metricName,
-				})
-				r.indexedMetrics[metricName] = MetricMetadata{
-					Fields:  *fields,
-					Indices: indices,
-				}
-			}
-		}
-	}
-}
-
-type MetricLister struct {
-	cfg            *Config
-	esClient       *esv7.Client
-	once           sync.Once
-	currentMetrics []provider.CustomMetricInfo
-	m              sync.RWMutex
-	metadata       map[string]MetricMetadata
-}
-
-func NewMetricLister(cfg *Config, esClient *esv7.Client) *MetricLister {
-	return &MetricLister{
-		cfg:            cfg,
-		esClient:       esClient,
-		once:           sync.Once{},
-		currentMetrics: nil,
-		m:              sync.RWMutex{},
-	}
-}
-
-func (ml *MetricLister) GetMetricMetadata(metric string) *MetricMetadata {
-	ml.m.RLock()
-	defer ml.m.RUnlock()
-	metadata, exists := ml.metadata[metric]
-	if !exists {
-		return nil
-	}
-	return &metadata
-}
-
-func (ml *MetricLister) GetMetrics() []provider.CustomMetricInfo {
-	ml.m.RLock()
-	defer ml.m.RUnlock()
-	return ml.currentMetrics
-}
-
-func (ml *MetricLister) Start() {
-	ml.once.Do(
-		func() {
-			ml.m.Lock()
-			defer ml.m.Unlock()
-			attempts := 10
-			sleep := 5 * time.Second
-			for i := 0; ; i++ {
-				klog.Infof("Fetching metric list from Elasticsearch, attempt %i", i)
-				metrics, metadata, err := ml.cfg.Metrics(ml.esClient)
-				if err == nil {
-					ml.currentMetrics = metrics
-					ml.metadata = metadata
-					return
-				}
-				if i >= (attempts - 1) {
-					break
-				}
-				klog.Errorf("Error while fetching metrics : %v, will retry in %s", err, sleep)
-				time.Sleep(sleep)
-			}
-			klog.Fatalf("Give up after %d attempts", attempts)
-		},
-	)
 }

@@ -5,7 +5,7 @@ metadata:
   namespace: stack-monitoring
 spec:
   minReplicas: 1
-  maxReplicas: 3
+  maxReplicas: 40
   metrics:
   - type: Resource
     resource:
@@ -20,10 +20,17 @@ spec:
       target:
         type: AverageValue
         averageValue: 42
+  - type: Pods
+    pods:
+      metric:
+        name: kibana.stats.load.pod
+      target:
+        type: AverageValue
+        averageValue: 0.45
   scaleTargetRef:
     apiVersion: kibana.k8s.elastic.co/v1
     kind: Kibana
     name: kibana-example
   behavior:
     scaleDown:
-      stabilizationWindowSeconds: 5
+      stabilizationWindowSeconds: 10
