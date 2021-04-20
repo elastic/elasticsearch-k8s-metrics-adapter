@@ -19,9 +19,11 @@ Before applying this manifest a `Secret` named `elasticsearch` must be created. 
 
 ## Configuration
 
-Metrics discovery configuration is [hard coded](pkg/config/default.yaml) at the moment.
+Configuration file is expected to be available in the file `config/config.yml`. An example is available [here](deploy/elasticsearch-adapter.yaml).
 
-The configuration contains the information required to discover the metrics exposed by the adapter:
+### Metrics discovery
+
+The `metricSets` section contains the information required to discover the metrics exposed by the adapter:
 
 ```yaml
 metricSets:
@@ -31,6 +33,72 @@ metricSets:
         labels: [ '^prometheus\.labels\.(.*)' ] # only a teaser, not used for the moment
       - patterns: [ '^kibana\.stats\.' ] # because we need Kibana metrics for the example below
 ```
+
+### Compute advanced metrics
+
+Complex metrics can be calculated using a custom query, for example:
+
+```yaml
+  - name: "my-computed-metric" # name of the metric as it will be exposed to Kubernetes
+    search: # This is an example of an advanced custom search, calculated using an aggregation.
+      metricPath: ".aggregations.custom_name.buckets.[0].pod_load.value" # Path to the metric value.
+      timestampPath: ".aggregations.custom_name.buckets.[0].timestamp.value_as_string" # Path to the timestamp.
+      body: >
+        {
+          "query": {
+            ... your query ...
+          },
+          "size": 0,
+          "aggs": {
+            "custom_name": {
+              "terms": {
+                "field": "kibana.stats.name"
+              },
+              "aggs": {
+                "pods_count": {
+                  "cardinality": {
+                    "field": "kubernetes.pod.name"
+                  }
+                },
+                "maxLoad": {
+                  "max": {
+                    "field": "kibana.stats.load"
+                  }
+                },
+                "timestamp": {
+                  "max": {
+                    "field": "@timestamp"
+                  }
+                },
+                "pod_load": {
+                  "bucket_script": {
+                    "buckets_path": {
+                      "load": "maxLoad"
+                    },
+                    "script": "params.load / {{ len .Objects }}"
+                  }
+                }
+              }
+            }
+          }
+        }
+```
+
+The `body` field must contain a valid Elasticsearch query. `metricPath` and `timestampPath` must contain valid [JQ queries](https://stedolan.github.io/jq/manual/#Basicfilters) used to get the metric value and the timestamp from the Elasticsearch response.
+
+### Upstream metric server
+
+You may want to server some metrics from a third party metric server like Prometheus or Stackdriver. This can be done by specifying the third party adapter API endpoint using the `upstream` field:
+
+```yaml
+## upstream can be used to reference an existing or third party metric adapter service.
+upstream:
+  host: https://custom-metrics-apiserver.custom-metrics.svc
+  tls:
+    insecureSkipTLSVerify: true
+```
+
+Any unknown metric request is then proxied to the provided metrics server. 
 
 ## Example
 
