@@ -50,7 +50,7 @@ func (ml *MetricLister) elasticsearchMetrics(
 				metricRecoder.metrics = append(metricRecoder.metrics, provider.CustomMetricInfo{
 					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
 						Group:    "",
-						Resource: "pod",
+						Resource: "pods",
 					},
 					Namespaced: true,
 					Metric:     field.Name,
@@ -158,7 +158,7 @@ func (r *recorder) _processMappingDocument(root string, d map[string]interface{}
 				r.metrics = append(r.metrics, provider.CustomMetricInfo{
 					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
 						Group:    "",
-						Resource: "pod",
+						Resource: "pods",
 					},
 					Namespaced: true,
 					Metric:     metricName,
