@@ -7,7 +7,12 @@
 ## metricSets defines the Elasticsearch fields to be exposed to the K8S autoscaling controllers.
 ## This section requires ELASTICSEARCH_URL, ELASTICSEARCH_USERNAME and ELASTICSEARCH_PASSWORD to be set as env. variables.
 metricSets:
-  - indices: [ 'metricbeat-*' ]
+  - indices: [ 'metrics-*' ] # metrics from Agents
+    fields:
+      - patterns:
+          - '^kubernetes\.pod\.'
+          - '^prometheus\.'
+  - indices: [ 'metricbeat-*' ] # metrics from Beats
     fields:
       - patterns: [ '^prometheus\.metrics\.' ]
         labels: [ '^prometheus\.labels\.(.*)' ]
