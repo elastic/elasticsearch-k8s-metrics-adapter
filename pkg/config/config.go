@@ -86,6 +86,10 @@ type Search struct {
 	TimestampResultQuery *gojq.Query `yaml:"-"`
 }
 
+var defaultFieldSet = Fields{
+	Patterns: []string{"^.*$"},
+}
+
 func (f FieldsSet) FindMetadata(fieldName string) *Fields {
 	for _, fieldSet := range f {
 		for _, pattern := range fieldSet.compiledPatterns {
@@ -120,6 +124,10 @@ func From(source []byte) (*Config, error) {
 	}
 	// Compile the regular expressions
 	for i := range config.MetricSets {
+		if len(config.MetricSets[i].Fields) == 0 {
+			// User did not provide a field pattern, we assume the user wants all numeric fields in this index to be available.
+			config.MetricSets[i].Fields = append(config.MetricSets[i].Fields, defaultFieldSet)
+		}
 		metricSet := config.MetricSets[i]
 		for j := range metricSet.Fields {
 			field := metricSet.Fields[j]

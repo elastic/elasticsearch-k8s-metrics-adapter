@@ -16,6 +16,23 @@ import (
 	"k8s.io/klog/v2"
 )
 
+var allowedTypes = map[string]struct{}{
+	"byte":          {},
+	"double":        {},
+	"float":         {},
+	"half_float":    {},
+	"integer":       {},
+	"long":          {},
+	"scaled_float":  {},
+	"short":         {},
+	"unsigned_long": {},
+}
+
+func isTypeAllowed(t string) bool {
+	_, ok := allowedTypes[t]
+	return ok
+}
+
 func (ml *MetricLister) elasticsearchMetrics(
 	esProvider provider.MetricsProvider,
 ) ([]provider.CustomMetricInfo, map[string]common.MetricMetadata, error) {
@@ -32,7 +49,6 @@ func (ml *MetricLister) elasticsearchMetrics(
 				metricResultQuery, err := gojq.Parse(search.MetricPath)
 				if err != nil {
 					klog.Fatalf("Error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
-
 				}
 				search.MetricResultQuery = metricResultQuery
 				timestampResultQuery, err := gojq.Parse(search.TimestampPath)
@@ -82,6 +98,10 @@ func getMappingFor(metricSet config.MetricSet, esClient *esv7.Client, recorder *
 		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 			return fmt.Errorf("error parsing the response body: %s", err)
 		} else {
+			if len(r) == 0 {
+				klog.Infof("Mapping is empty for index pattern %s", metricSet.Indices)
+				return nil
+			}
 			// Process mapping
 			for _, indexMapping := range r {
 				m := indexMapping.(map[string]interface{})
@@ -148,6 +168,10 @@ func (r *recorder) _processMappingDocument(root string, d map[string]interface{}
 				}
 				r._processMappingDocument(newRoot, child, fieldsSet, indices)
 			} else {
+				// Ensure that we have a type
+				if t, hasType := child["type"]; !(hasType && isTypeAllowed(t.(string))) {
+					continue
+				}
 				// New metric
 				metricName := fmt.Sprintf("%s.%s", root, k)
 				fields := fieldsSet.FindMetadata(metricName)
