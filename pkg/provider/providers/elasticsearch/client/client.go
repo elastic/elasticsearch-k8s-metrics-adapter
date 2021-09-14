@@ -18,20 +18,20 @@ package client
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 
+	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	esv7 "github.com/elastic/go-elasticsearch/v7"
 	"go.elastic.co/apm/module/apmelasticsearch"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 )
 
 const (
-	vElasticsearchURL      = "ELASTICSEARCH_URL"
-	vElasticsearchUsername = "ELASTICSEARCH_USERNAME"
-	vElasticsearchPassword = "ELASTICSEARCH_PASSWORD"
-
 	query = `
 {
 	"query": {
@@ -81,33 +81,45 @@ func QueryFor(params QueryParams) string {
 	return fmt.Sprintf(query, params.Metric, params.Name.Namespace, params.Name.Name)
 }
 
-func NewElasticsearchClient() (*esv7.Client, error) {
-	elasticsearchURL := os.Getenv(vElasticsearchURL)
-	if len(elasticsearchURL) == 0 {
-		return nil, mandatoryEnvError(vElasticsearchURL)
+func NewElasticsearchClient(config *config.HTTPClientConfig) (*esv7.Client, error) {
+	tlsConfig, err := newTLSClientConfig(config.TLSClientConfig)
+	if err != nil {
+		return nil, err
 	}
-	elasticsearchUsername := os.Getenv(vElasticsearchUsername)
-	if len(elasticsearchUsername) == 0 {
-		return nil, mandatoryEnvError(vElasticsearchUsername)
-	}
-	elasticsearchPassword := os.Getenv(vElasticsearchPassword)
-	if len(elasticsearchPassword) == 0 {
-		return nil, mandatoryEnvError(vElasticsearchPassword)
+	transport := &http.Transport{
+		TLSClientConfig: tlsConfig,
 	}
 
-	unsecureTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
 	cfg := esv7.Config{
-		Username:  elasticsearchUsername,
-		Password:  elasticsearchPassword,
-		Addresses: []string{elasticsearchURL},
-		Transport: apmelasticsearch.WrapRoundTripper(unsecureTransport),
+		Username:  os.ExpandEnv(config.AuthenticationConfig.Username),
+		Password:  os.ExpandEnv(config.AuthenticationConfig.Password),
+		Addresses: []string{os.ExpandEnv(config.Host)},
+		Transport: apmelasticsearch.WrapRoundTripper(transport),
 	}
 
 	return esv7.NewClient(cfg)
 }
 
-func mandatoryEnvError(name string) error {
-	return fmt.Errorf("environment variable %s must be set", name)
+func newTLSClientConfig(config *config.TLSClientConfig) (*tls.Config, error) {
+	if config == nil {
+		// If nothing has been set just return a nil struct
+		klog.V(2).Infof("No Elasticsearch TLS configuration provided")
+		return nil, nil
+	}
+	klog.V(2).Infof("Loading Elasticsearch TLS configuration")
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: config.Insecure,
+	}
+
+	if config.CAFile != "" {
+		// Load CA cert
+		caCert, err := ioutil.ReadFile(config.CAFile)
+		if err != nil {
+			return nil, err
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+		tlsConfig.RootCAs = caCertPool
+	}
+	return tlsConfig, nil
 }

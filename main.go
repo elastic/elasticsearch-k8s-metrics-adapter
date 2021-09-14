@@ -68,7 +68,7 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 		klog.Fatalf("unable to construct client REST mapper: %v", err)
 	}
 
-	esClient, err := esclient.NewElasticsearchClient()
+	esClient, err := esclient.NewElasticsearchClient(adapterCfg.Elasticsearch.ClientConfig)
 	if err != nil {
 		klog.Fatalf("unable to construct Elasticsearch client: %v", err)
 	}
@@ -76,7 +76,7 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 	tracer := createTracer()
 
 	var metricLister common.MetricLister
-	if adapterCfg.Upstream.IsDefined() {
+	if adapterCfg.Upstream.ClientConfig.IsDefined() {
 		discoveryClient, err := a.DiscoveryClient()
 		if err != nil {
 			klog.Fatalf("unable to construct discoveryClient client: %v", err)
@@ -91,7 +91,7 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 		if err != nil {
 			klog.Fatalf("unable to construct Kubernetes client: %v", err)
 		}
-		upstreamConfig, err := adapterCfg.Upstream.ClientConfig(kubeClient, clientCfg)
+		upstreamConfig, err := adapterCfg.Upstream.ClientConfig.NewRestClientConfig(kubeClient, clientCfg)
 		if err != nil {
 			klog.Fatalf("unable to construct discovery client for upstream: %v", err)
 		}

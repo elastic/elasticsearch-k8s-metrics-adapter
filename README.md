@@ -88,17 +88,18 @@ The `body` field must contain a valid Elasticsearch query. `metricPath` and `tim
 
 ### Upstream metric server
 
-You may want to server some metrics from a third party metric server like Prometheus or Stackdriver. This can be done by specifying the third party adapter API endpoint using the `upstream` field:
+You may want to also server some metrics from an existing third party metric server like Prometheus or Stackdriver. This can be done by adding the third party adapter API endpoint to the `metricServers` list:
 
 ```yaml
-## upstream can be used to reference an existing or third party metric adapter service.
-upstream:
-  host: https://custom-metrics-apiserver.custom-metrics.svc
-  tls:
-    insecureSkipTLSVerify: true
+## Metric server of type "custom" can be used to reference an existing or third party metric adapter service.
+metricServers:
+  - name: my-existing-metrics-adapter
+    type: custom # To be used to forward metric requests to a server which complies with https://github.com/kubernetes/metrics
+    clientConfig:
+      host: https://custom-metrics-apiserver.custom-metrics.svc
+      tls:
+        insecureSkipTLSVerify: true
 ```
-
-Any unknown metric request is then proxied to the provided metrics server. 
 
 ## Example
 

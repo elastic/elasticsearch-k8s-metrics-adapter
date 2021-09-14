@@ -1,0 +1,42 @@
+metricServers:
+  - name: my-existing-metrics-adapter
+    type: custom
+    clientConfig:
+      host: https://custom-metrics-apiserver.custom-metrics.svc
+      authentication:
+        tokenFile: /run/secrets/kubernetes.io/serviceaccount/token
+      tls:
+        enabled: true
+        insecureSkipTLSVerify: false
+        caFile: /run/secrets/kubernetes.io/serviceaccount/ca.crt
+  - name: elasticsearch-metrics-cluster
+    type: elasticsearch
+    clientConfig:
+      host: https://elasticsearch-es-http.default.svc:9200
+      authentication:
+        username: elastic
+        password: ${PASSWORD}
+      tls:
+        enabled: true
+        insecureSkipTLSVerify: false
+        caFile: /mnt/elastic-internal/elasticsearch-association/default/elasticsearch/certs/ca.crt
+    metricSets:
+      - indices: [ 'metrics-*' ]     # metrics from Agents
+      #  - patterns: [ '^.*$' ]  # if no pattern is provided all fields with a numeric field type are exposed.
+      - indices: [ 'metricbeat-*' ]
+        fields:
+          - patterns: [ '^.*$' ]  # expose all the metrics collected by Beats
+          - patterns: [ '^kibana\.stats\.' ]
+          # resources: # we want these metrics to be associated with a Kibana resource. Not implemented yet.
+          #   - service.name:
+          #     resource: "kibana"
+          #   - kubernetes.pod.name:
+          #     resource: "pod"
+          - name: "kibana.stats.load.pod"  # This is an example of an advanced custom search, calculated using an aggregation.
+            search:
+              metricPath: ".aggregations.custom_name.buckets.[0].pod_load.value" # Path to the metric value.
+              timestampPath: ".aggregations.custom_name.buckets.[0].timestamp.value_as_string" # Path to the timestamp.
+              body: >
+                {
+                  "query": { "my query" }
+                }

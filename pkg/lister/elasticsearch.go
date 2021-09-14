@@ -37,7 +37,7 @@ func (ml *MetricLister) elasticsearchMetrics(
 	esProvider provider.MetricsProvider,
 ) ([]provider.CustomMetricInfo, map[string]common.MetricMetadata, error) {
 	esClient := ml.esClient
-	metricSets := ml.cfg.MetricSets
+	metricSets := ml.cfg.Elasticsearch.MetricSets
 	metricRecoder := newRecorder(esProvider)
 
 	// We first record static fields, they do not require to read the mapping

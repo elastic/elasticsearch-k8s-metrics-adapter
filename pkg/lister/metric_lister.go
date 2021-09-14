@@ -162,17 +162,17 @@ func (ml *MetricLister) Start() {
 				time.Sleep(sleep)
 			}
 
-			if !ml.cfg.Upstream.IsDefined() {
+			if !ml.cfg.Upstream.ClientConfig.IsDefined() {
 				return
 			}
 			upstreamProvider := upstream.NewUpstreamProvider(ml.mapper, ml.upstreamMetricClient, ml, ml.tracer)
 			ml.defaultMetricsProvider = upstreamProvider
 			attempts = 10
 			for i := 0; ; i++ {
-				klog.Infof("Fetching metric list from upstream metric adapter %v, attempt %d", ml.cfg.Upstream.Host, i)
+				klog.Infof("Fetching metric list from upstream metric adapter %v, attempt %d", ml.cfg.Upstream.ClientConfig.Host, i)
 				metrics, metadata, err := upstreamMetrics(ml.upstreamRestClient, upstreamProvider)
 				if err == nil {
-					klog.Infof("%d metrics listed from upstream metric adapter %v", len(metrics), ml.cfg.Upstream.Host)
+					klog.Infof("%d metrics listed from upstream metric adapter %v", len(metrics), ml.cfg.Upstream.ClientConfig.Host)
 					ml.currentCustomMetrics = append(ml.currentCustomMetrics, metrics...)
 					for k, v := range metadata {
 						ml.metadata[k] = v

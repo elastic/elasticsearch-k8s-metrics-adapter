@@ -17,9 +17,8 @@
 package config
 
 import (
-	"context"
 	"errors"
-	"fmt"
+	"io/ioutil"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -37,15 +36,14 @@ type HTTPClientConfig struct {
 
 type AuthenticationConfig struct {
 	// Basic authentication
-	Username string     `yaml:"username,omitempty"`
-	Password *SecretRef `yaml:"password,omitempty"`
+	Username string `yaml:"username,omitempty"`
+	Password string `yaml:"password,omitempty"`
 	// Bearer
-	BearerToken     *SecretRef `yaml:"token,omitempty"`
-	BearerTokenFile string     `yaml:"tokenFile,omitempty"`
+	BearerTokenFile string `yaml:"tokenFile,omitempty"`
 	// TLS client certificate authentication
-	Cert *SecretRef `yaml:"cert,omitempty"`
+	CertFile string `yaml:"certFile,omitempty"`
 	// TLS client certificate key authentication
-	Key *SecretRef `yaml:"key,omitempty"`
+	KeyFile string `yaml:"keyFile,omitempty"`
 }
 
 func (AuthenticationConfig) GoString() string {
@@ -59,47 +57,23 @@ func (AuthenticationConfig) String() string {
 type TLSClientConfig struct {
 	Insecure bool `yaml:"insecureSkipTLSVerify"` // insecureSkipTLSVerify to match original APIService setting
 
-	// ServerName is passed to the server for SNI and is used in the client to check server
-	// certificates against. If ServerName is empty, the hostname used to contact the
-	// server is used.
-	ServerName string `yaml:"serverName"`
-
 	// Trusted root certificates for server
-	CA *SecretRef `yaml:"ca,omitempty"`
+	CAFile string `yaml:"caFile,omitempty"`
 }
 
-type SecretRef struct {
-	Name      string `yaml:"name,omitempty"`
-	Namespace string `yaml:"namespace,omitempty"`
-	Key       string `yaml:"key,omitempty"`
-}
-
-func (sr *SecretRef) Data(client *kubernetes.Clientset) ([]byte, error) {
-	if sr == nil {
-		return nil, nil
+func readFileOrDie(filename string) []byte {
+	if filename == "" {
+		return nil
 	}
-	// Read the secret
-	secret, err := client.CoreV1().Secrets(sr.Name).Get(context.TODO(), sr.Name, v1.GetOptions{})
+	data, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return nil, err
-	}
-	data, keyExists := secret.Data[sr.Key]
-	if !keyExists {
-		return nil, fmt.Errorf("key %s not found in %s/%s", sr.Key, sr.Namespace, sr.Name)
-	}
-	return data, nil
-}
-
-func (sr *SecretRef) DataOrDie(client *kubernetes.Clientset) []byte {
-	data, err := sr.Data(client)
-	if err != nil {
-		klog.Fatalf("unable to retrieve data from secret: %v", err)
+		klog.Fatalf("unable to retrieve data from file: %s", err)
 	}
 	return data
 }
 
-// ClientConfig converts the config provided by the user into a restclient.Config
-func (hc *HTTPClientConfig) ClientConfig(client *kubernetes.Clientset, def *restclient.Config) (*restclient.Config, error) {
+// NewRestClientConfig converts the config provided by the user into a restclient.Config
+func (hc *HTTPClientConfig) NewRestClientConfig(client *kubernetes.Clientset, def *restclient.Config) (*restclient.Config, error) {
 	// defensive copy
 	def = restclient.CopyConfig(def)
 	if hc == nil {
@@ -121,20 +95,17 @@ func (hc *HTTPClientConfig) ClientConfig(client *kubernetes.Clientset, def *rest
 		config.TLSClientConfig = def.TLSClientConfig
 	} else {
 		config.TLSClientConfig.Insecure = hc.TLSClientConfig.Insecure
-		config.TLSClientConfig.CAData = hc.TLSClientConfig.CA.DataOrDie(client)
-		config.TLSClientConfig.ServerName = hc.TLSClientConfig.ServerName
+		config.TLSClientConfig.CAFile = hc.TLSClientConfig.CAFile
 	}
 
 	// Authentication fields
 	if hc.AuthenticationConfig == nil {
 		config.TLSClientConfig.CertData = def.CertData
 		config.TLSClientConfig.KeyData = def.KeyData
-		config.BearerToken = def.BearerToken
 		config.BearerTokenFile = def.BearerTokenFile
 	} else {
-		config.TLSClientConfig.CertData = hc.AuthenticationConfig.Cert.DataOrDie(client)
-		config.TLSClientConfig.KeyData = hc.AuthenticationConfig.Cert.DataOrDie(client)
-		config.BearerToken = string(hc.AuthenticationConfig.BearerToken.DataOrDie(client))
+		config.TLSClientConfig.CertFile = hc.AuthenticationConfig.CertFile
+		config.TLSClientConfig.KeyFile = hc.AuthenticationConfig.KeyFile
 		config.BearerTokenFile = hc.AuthenticationConfig.BearerTokenFile
 	}
 	config.UserAgent = "Elasticsearch Metrics Adapter/0.0.1"

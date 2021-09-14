@@ -38,13 +38,27 @@ type ObjectSelector struct {
 
 // IsDefined checks if the object selector is not nil and has a name.
 // Namespace is not mandatory as it may be inherited by the parent object.
+func (o *ObjectSelector) IsDefined() bool {
+	return o != nil && (o.Name != "" || o.Namespace != "")
+}
+
 func (o *HTTPClientConfig) IsDefined() bool {
 	return o != nil
 }
 
+type MetricServer struct {
+	Name         string            `yaml:"name"`
+	Type         string            `yaml:"type"`
+	ClientConfig *HTTPClientConfig `yaml:"clientConfig,omitempty"`
+	MetricSets   MetricSets        `yaml:"metricSets,omitempty"` // only valid if type is elasticsearch
+}
+
+type MetricServers []MetricServer
+
 type Config struct {
-	Upstream   *HTTPClientConfig `yaml:"upstream,omitempty"`
-	MetricSets MetricSets        `yaml:"metricSets"`
+	MetricServers []MetricServer `yaml:"metricServers"`
+	Upstream      MetricServer   `yaml:"-"`
+	Elasticsearch MetricServer   `yaml:"-"`
 }
 
 type MetricSets []MetricSet
@@ -116,19 +130,23 @@ func Default() (*Config, error) {
 }
 
 func From(source []byte) (*Config, error) {
-	config := Config{}
+	config := &Config{}
 	// Read file as yaml
-	err := yaml.Unmarshal(source, &config)
+	err := yaml.Unmarshal(source, config)
 	if err != nil {
 		return nil, err
 	}
+
+	// Ensure that configuration is valid.
+	checkOrDie(config)
+
 	// Compile the regular expressions
-	for i := range config.MetricSets {
-		if len(config.MetricSets[i].Fields) == 0 {
+	for i := range config.Elasticsearch.MetricSets {
+		if len(config.Elasticsearch.MetricSets[i].Fields) == 0 {
 			// User did not provide a field pattern, we assume the user wants all numeric fields in this index to be available.
-			config.MetricSets[i].Fields = append(config.MetricSets[i].Fields, defaultFieldSet)
+			config.Elasticsearch.MetricSets[i].Fields = append(config.Elasticsearch.MetricSets[i].Fields, defaultFieldSet)
 		}
-		metricSet := config.MetricSets[i]
+		metricSet := config.Elasticsearch.MetricSets[i]
 		for j := range metricSet.Fields {
 			field := metricSet.Fields[j]
 			metricSet.Fields[j].compiledPatterns = make([]regexp.Regexp, len(field.Patterns))
@@ -141,6 +159,40 @@ func From(source []byte) (*Config, error) {
 			}
 		}
 	}
+	return config, nil
+}
 
-	return &config, nil
+func checkOrDie(config *Config) {
+	var hasElasticsearch, hasUpstream bool
+	for i, server := range config.MetricServers {
+		switch server.Type {
+		case "custom":
+			if hasUpstream {
+				klog.Fatalf("only one upstream custom metric server is allowed")
+			}
+			if !server.ClientConfig.IsDefined() {
+				klog.Fatalf("HTTP client configuration is not defined in upstream custom metric server")
+			}
+			if len(server.MetricSets) > 0 {
+				klog.Fatalf("metricSets is not allowed in upstream custom metric server")
+			}
+			hasUpstream = true
+			config.Upstream = config.MetricServers[i]
+		case "elasticsearch":
+			if hasElasticsearch {
+				klog.Fatalf("only one Elasticsearch instance is allowed")
+			}
+			if len(server.MetricSets) == 0 {
+				klog.Warningf("no metricSets defined")
+			}
+			if !server.ClientConfig.IsDefined() {
+				klog.Fatalf("Elasticsearch requires clientConfig to be set")
+			}
+			hasElasticsearch = true
+			config.Elasticsearch = config.MetricServers[i]
+		default:
+			klog.Fatalf("unknown metric server type: %s", server.Type)
+		}
+
+	}
 }
