@@ -20,7 +20,6 @@ import (
 	"k8s.io/metrics/pkg/apis/custom_metrics"
 	"k8s.io/metrics/pkg/apis/external_metrics"
 
-	cachedDiscovery "k8s.io/client-go/discovery/cached"
 	"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 	customMetricsAPI "k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 	externalMetricsAPI "k8s.io/metrics/pkg/apis/external_metrics/v1beta1"
@@ -39,7 +38,7 @@ type metricsClient struct {
 	customMetricsClient              cmClient.CustomMetricsClient
 
 	externalMetricsClient emClient.ExternalMetricsClient
-	discoveryClient       discovery.CachedDiscoveryInterface
+	discoveryClient       discovery.ServerResourcesInterface
 	mapper                meta.RESTMapper
 
 	rwLock                                 sync.RWMutex
@@ -245,7 +244,6 @@ func (mcp metricsClientProvider) NewClient(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discovery client: %v", err)
 	}
-	cachedClient := cachedDiscovery.NewMemCacheClient(discoveryClient)
 	customMetricsAvailableAPIsGetter := cmClient.NewAvailableAPIsGetter(discoveryClient)
 	customMetricsClient := cmClient.NewForConfig(restClientConfig, mcp.mapper, customMetricsAvailableAPIsGetter)
 	externalMetricsClient, err := emClient.NewForConfig(restClientConfig)
@@ -257,9 +255,8 @@ func (mcp metricsClientProvider) NewClient(
 		metricServerCfg:                  metricServerCfg,
 		customMetricsAvailableAPIsGetter: customMetricsAvailableAPIsGetter,
 		customMetricsClient:              customMetricsClient,
-
-		externalMetricsClient: externalMetricsClient,
-		discoveryClient:       cachedClient,
-		mapper:                mcp.mapper,
+		externalMetricsClient:            externalMetricsClient,
+		discoveryClient:                  discoveryClient,
+		mapper:                           mcp.mapper,
 	}, err
 }

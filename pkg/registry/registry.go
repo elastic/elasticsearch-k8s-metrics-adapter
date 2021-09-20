@@ -87,10 +87,9 @@ var _ scheduler.MetricListener = &Registry{}
 
 func (r *Registry) OnError(err error) {}
 
-func (r *Registry) UpdateMetrics(
+func (r *Registry) UpdateCustomMetrics(
 	metricClient client.Interface,
 	cms map[provider.CustomMetricInfo]struct{},
-	ems map[provider.ExternalMetricInfo]struct{},
 ) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -115,7 +114,16 @@ func (r *Registry) UpdateMetrics(
 		serviceList := r.customMetrics[mInfo]
 		serviceList.addOrUpdateClient(metricClient)
 	}
+}
 
+func (r *Registry) UpdateExternalMetrics(
+	metricClient client.Interface,
+	ems map[provider.ExternalMetricInfo]struct{},
+) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	clientName := metricClient.GetConfiguration().Name
 	actualExternalMetrics := r.getExternalMetricsFrom(clientName)
 	// Check external metrics that are no longer served.
 	removedExternalMetrics := getRemovedExternalMetrics(actualExternalMetrics, ems)

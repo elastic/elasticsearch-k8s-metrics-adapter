@@ -7,54 +7,61 @@ import (
 )
 
 func TestAliases_Alias(t *testing.T) {
-	type fields struct {
-		matches string
-		as      string
-	}
 	type want struct {
-		metric string
-		ok     bool
+		alias string
+		ok    bool
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		source string
-		want   want
+		name               string
+		matches            *Matches
+		originalMetricName string
+		want               want
 	}{
 		{
-			fields: fields{
-				matches: "^(.*)$",
-				as:      "${1}@server1",
+			matches: &Matches{
+				Matches: "^(.*)$",
+				As:      "${1}@server1",
 			},
-			source: "my_metric",
+			originalMetricName: "my_metric",
 			want: want{
-				metric: "my_metric@server1",
-				ok:     true,
+				alias: "my_metric@server1",
+				ok:    true,
 			},
 		},
 		{
-			name: "does ot match, keep the original",
-			fields: fields{
-				matches: "^(.*)$",
-				as:      "${1}@server1",
+			name: "does not match, keep the original",
+			matches: &Matches{
+				Matches: "^f(.*)$",
+				As:      "${1}@server1",
 			},
-			source: "my_metric",
+			originalMetricName: "my_metric",
 			want: want{
-				metric: "my_metric@server1",
-				ok:     true,
+				alias: "my_metric",
+				ok:    true,
+			},
+		},
+		{
+			name:               "identity",
+			matches:            nil,
+			originalMetricName: "my_metric",
+			want: want{
+				alias: "my_metric",
+				ok:    true,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a, err := NewNamer(tt.fields.matches, tt.fields.as)
+			a, err := NewNamer(tt.matches)
 			assert.NoError(t, err)
 			// Add the alias
-			a.Register(tt.source)
+			assert.Equal(t, tt.want.alias, a.Register(tt.originalMetricName))
 			// Get the alias
-			original, ok := a.Get("my_metric@server1")
+			original, ok := a.Get(tt.want.alias)
 			assert.Equal(t, tt.want.ok, ok)
-			assert.Equal(t, tt.source, original)
+			if tt.want.ok {
+				assert.Equal(t, tt.originalMetricName, original)
+			}
 		})
 	}
 }

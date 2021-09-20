@@ -1,6 +1,6 @@
 metricServers:
   - name: my-existing-metrics-adapter
-    type: custom
+    serverType: custom
     clientConfig:
       host: https://custom-metrics-apiserver.custom-metrics.svc
       authentication:
@@ -10,7 +10,8 @@ metricServers:
         insecureSkipTLSVerify: false
         caFile: /run/secrets/kubernetes.io/serviceaccount/ca.crt
   - name: elasticsearch-metrics-cluster
-    type: elasticsearch
+    serverType: elasticsearch
+    metricTypes: [ "custom" ]
     clientConfig:
       host: https://elasticsearch-es-http.default.svc:9200
       authentication:

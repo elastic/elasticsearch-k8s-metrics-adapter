@@ -18,13 +18,15 @@ package scheduler
 
 import (
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 )
 
 type MetricListener interface {
-	UpdateMetrics(client.Interface, map[provider.CustomMetricInfo]struct{}, map[provider.ExternalMetricInfo]struct{})
+	UpdateCustomMetrics(client.Interface, map[provider.CustomMetricInfo]struct{})
+	UpdateExternalMetrics(client.Interface, map[provider.ExternalMetricInfo]struct{})
 }
 
 type ErrorListener interface {
-	OnError(client.Interface, error)
+	OnError(c client.Interface, metricType config.MetricType, err error)
 }

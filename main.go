@@ -20,6 +20,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/elastic/elasticsearch-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-adapter/pkg/client/custom_api"
 	"github.com/elastic/elasticsearch-adapter/pkg/client/elasticsearch"
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
@@ -57,45 +58,51 @@ type ElasticsearchAdapter struct {
 }
 
 func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_provider.MetricsProvider {
-	client, err := a.DynamicClient()
+	dynamicClient, err := a.DynamicClient()
 	if err != nil {
-		klog.Fatalf("unable to construct dynamic client: %v", err)
+		klog.Fatalf("unable to construct dynamic dynamicClient: %v", err)
 	}
 
 	mapper, err := a.RESTMapper()
 	if err != nil {
-		klog.Fatalf("unable to construct client REST mapper: %v", err)
+		klog.Fatalf("unable to construct dynamicClient REST mapper: %v", err)
 	}
 
 	tracer := createTracer()
 
-	esMetricClient, err := elasticsearch.NewElasticsearchClient(
-		adapterCfg.Elasticsearch,
-		client,
-		mapper,
-		tracer,
-	)
-	if err != nil {
-		klog.Fatalf("unable to construct Elasticsearch client: %v", err)
-	}
-	scheduler := scheduler.NewScheduler(esMetricClient)
+	var clients []client.Interface
+	for _, clientCfg := range adapterCfg.MetricServers {
+		switch clientCfg.ServerType {
+		case "elasticsearch":
+			esMetricClient, err := elasticsearch.NewElasticsearchClient(
+				clientCfg,
+				dynamicClient,
+				mapper,
+				tracer,
+			)
+			if err != nil {
+				klog.Fatalf("unable to construct Elasticsearch dynamicClient: %v", err)
+			}
+			clients = append(clients, esMetricClient)
+		case "custom":
+			kubeClientCfg, err := a.ClientConfig()
+			if err != nil {
+				klog.Fatalf("unable to construct Kubernetes dynamicClient config: %v", err)
+			}
+			kubeClient, err := kubernetes.NewForConfig(kubeClientCfg)
+			if err != nil {
+				klog.Fatalf("unable to construct Kubernetes dynamicClient: %v", err)
+			}
+			metricApiClient, err := custom_api.NewMetricApiClientProvider(kubeClientCfg, mapper).NewClient(kubeClient, clientCfg)
+			if err != nil {
+				klog.Fatalf("unable to construct Kubernetes custom metric API dynamicClient: %v", err)
+			}
+			clients = append(clients, metricApiClient)
+		}
 
-	if adapterCfg.Upstream != nil {
-		clientCfg, err := a.ClientConfig()
-		if err != nil {
-			klog.Fatalf("unable to construct Kubernetes client config: %v", err)
-		}
-		kubeClient, err := kubernetes.NewForConfig(clientCfg)
-		if err != nil {
-			klog.Fatalf("unable to construct Kubernetes client: %v", err)
-		}
-		metricApiClient, err := custom_api.NewMetricApiClientProvider(clientCfg, mapper).NewClient(kubeClient, *adapterCfg.Upstream)
-		if err != nil {
-			klog.Fatalf("unable to construct Kubernetes custom metric API client: %v", err)
-		}
-		scheduler.WithClients(metricApiClient)
 	}
 
+	scheduler := scheduler.NewScheduler(clients...)
 	r := registry.NewRegistry()
 	scheduler.
 		WithMetricListeners(a.monitoringServer, r).

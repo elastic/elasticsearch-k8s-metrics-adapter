@@ -33,17 +33,17 @@ func TestFrom(t *testing.T) {
 	tests := []struct {
 		name              string
 		args              args
-		wantUpstream      *MetricServer // upstream is optional
+		wantUpstream      MetricServer
 		wantElasticsearch MetricServer
 		wantErr           bool
 	}{
 		{
 			name: "Happy path 1",
 			args: args{file: "config1.yaml"},
-			wantUpstream: &MetricServer{
-				Name:     "my-existing-metrics-adapter",
-				Type:     "custom",
-				Priority: 0,
+			wantUpstream: MetricServer{
+				Name:       "my-existing-metrics-adapter",
+				ServerType: "custom",
+				Priority:   0,
 				ClientConfig: HTTPClientConfig{
 					Host: "https://custom-metrics-apiserver.custom-metrics.svc",
 					AuthenticationConfig: &AuthenticationConfig{
@@ -56,9 +56,9 @@ func TestFrom(t *testing.T) {
 				},
 			},
 			wantElasticsearch: MetricServer{
-				Name:     "elasticsearch-metrics-cluster",
-				Type:     "elasticsearch",
-				Priority: 1,
+				Name:       "elasticsearch-metrics-cluster",
+				ServerType: "elasticsearch",
+				Priority:   1,
 				ClientConfig: HTTPClientConfig{
 					Host: "https://elasticsearch-es-http.default.svc:9200",
 					AuthenticationConfig: &AuthenticationConfig{
@@ -70,6 +70,11 @@ func TestFrom(t *testing.T) {
 						CAFile:   "/mnt/elastic-internal/elasticsearch-association/default/elasticsearch/certs/ca.crt",
 					},
 				},
+				Rename: &Matches{
+					Matches: "^(.*)$",
+					As:      "${1}@elasticsearch-metrics-cluster",
+				},
+				MetricTypes: newMetricTypes("custom"),
 				MetricSets: MetricSets{
 					MetricSet{
 						Indices: []string{"metrics-*"},
@@ -114,8 +119,27 @@ func TestFrom(t *testing.T) {
 				t.Errorf("From() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			assert.Equal(t, tt.wantElasticsearch, got.Elasticsearch)
-			assert.Equal(t, tt.wantUpstream, got.Upstream)
+			assert.Equal(t, tt.wantElasticsearch, getMetricServer(t, "elasticsearch-metrics-cluster", got))
+			assert.Equal(t, tt.wantUpstream, getMetricServer(t, "my-existing-metrics-adapter", got))
 		})
 	}
+}
+
+func getMetricServer(t *testing.T, name string, config *Config) MetricServer {
+	t.Helper()
+	for _, ms := range config.MetricServers {
+		if ms.Name == name {
+			return ms
+		}
+	}
+	t.Fatalf("Metric server not found: %s", name)
+	return MetricServer{}
+}
+
+func newMetricTypes(metricTypes ...string) *MetricTypes {
+	result := make(MetricTypes, len(metricTypes))
+	for i := range metricTypes {
+		result[i] = MetricType(metricTypes[i])
+	}
+	return &result
 }

@@ -1,9 +1,7 @@
-## metricServers holds the configuration to expose the metrics from both an Elasticsearch cluster, and an existing
-## upstream server.
-## Only 1 Elasticsearch cluster and 1 upstream are allowed.
+## metricServers holds the configuration to connect and expose metrics stored in Elasticsearch, or from existing metrics server.
 metricServers:
   - name: elasticsearch-observability-cluster
-    type: elasticsearch # An elasticsearch metric server serves the metrics stored in an Elasticsearch cluster.
+    serverType: elasticsearch # An elasticsearch metric server serves the metrics stored in an Elasticsearch cluster.
     clientConfig:
       host: https://elasticsearch-es-http.default.svc:9200
       authentication:
@@ -28,7 +26,7 @@ metricServers:
     #          - kubernetes.pod.name:
     #              resource: "pod"
   - name: my-existing-custom-metrics-apiserver
-    type: custom # To be used to forward metric requests to a server which complies with https://github.com/kubernetes/metrics
+    serverType: custom # To be used to forward metric requests to a server which complies with https://github.com/kubernetes/metrics
     clientConfig:
       host: https://custom-metrics-apiserver.custom-metrics.svc
       ## By default, the metrics adapter inherits the credentials of the ServiceAccount used to run the Pod.

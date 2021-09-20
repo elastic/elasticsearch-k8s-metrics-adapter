@@ -22,7 +22,7 @@ import (
 	"text/template"
 
 	"github.com/itchyny/gojq"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"k8s.io/klog/v2"
 )
 
@@ -48,7 +48,8 @@ func (o *HTTPClientConfig) IsDefined() bool {
 
 type MetricServer struct {
 	Name         string           `yaml:"name"`
-	Type         string           `yaml:"type"`
+	ServerType   string           `yaml:"serverType"`
+	MetricTypes  *MetricTypes     `yaml:"metricTypes"`
 	ClientConfig HTTPClientConfig `yaml:"clientConfig,omitempty"`
 	MetricSets   MetricSets       `yaml:"metricSets,omitempty"` // only valid if type is elasticsearch
 	Rename       *Matches         `yaml:"rename,omitempty"`
@@ -69,8 +70,6 @@ type MetricServers []MetricServer
 type Config struct {
 	ReadinessProbe ReadinessProbe `yaml:"failureThreshold"`
 	MetricServers  []MetricServer `yaml:"metricServers"`
-	Upstream       *MetricServer  `yaml:"-"`
-	Elasticsearch  MetricServer   `yaml:"-"`
 }
 
 type MetricSets []MetricSet
@@ -154,67 +153,55 @@ func From(source []byte) (*Config, error) {
 		config.MetricServers[i].Priority = i
 	}
 
-	// Ensure that configuration is valid.
+	// Ensure that configuration is valid and compile the patterns.
 	checkOrDie(config)
-
-	// Compile the regular expressions
-	for i := range config.Elasticsearch.MetricSets {
-		if len(config.Elasticsearch.MetricSets[i].Fields) == 0 {
-			// User did not provide a field pattern, we assume the user wants all numeric fields in this index to be available.
-			config.Elasticsearch.MetricSets[i].Fields = append(config.Elasticsearch.MetricSets[i].Fields, defaultFieldSet)
-		}
-		metricSet := config.Elasticsearch.MetricSets[i]
-		for j := range metricSet.Fields {
-			field := metricSet.Fields[j]
-			metricSet.Fields[j].compiledPatterns = make([]regexp.Regexp, len(field.Patterns))
-			for k, pattern := range field.Patterns {
-				compiledPattern, err := regexp.Compile(pattern)
-				if err != nil {
-					return nil, err
-				}
-				metricSet.Fields[j].compiledPatterns[k] = *compiledPattern
-			}
-		}
-	}
 	return config, nil
 }
 
 func checkOrDie(config *Config) {
-	var hasElasticsearch, hasUpstream bool
-	for i, server := range config.MetricServers {
+	for i := range config.MetricServers {
+		server := config.MetricServers[i]
 		if server.Rename != nil {
 			if len(server.Rename.Matches) == 0 || len(server.Rename.As) == 0 {
 				klog.Fatalf("%s: rename directive must contain both \"matches\" and \"as\" fields", server.Name)
 			}
 		}
-		switch server.Type {
+		switch server.ServerType {
 		case "custom":
-			if hasUpstream {
-				klog.Fatalf("only one upstream custom metric server is allowed")
-			}
 			if !server.ClientConfig.IsDefined() {
 				klog.Fatalf("%s: HTTP client configuration is not defined in upstream custom metric server", server.Name)
 			}
 			if len(server.MetricSets) > 0 {
 				klog.Fatalf("%s: metricSets is not allowed in upstream custom metric server", server.Name)
 			}
-			hasUpstream = true
-			upstreamCfg := config.MetricServers[i]
-			config.Upstream = &upstreamCfg
 		case "elasticsearch":
-			if hasElasticsearch {
-				klog.Fatalf("%s: only one Elasticsearch instance is allowed", server.Name)
-			}
 			if len(server.MetricSets) == 0 {
 				klog.Warningf("%s: no metricSets defined", server.Name)
 			}
 			if !server.ClientConfig.IsDefined() {
 				klog.Fatalf("%s: Elasticsearch requires clientConfig to be set", server.Name)
 			}
-			hasElasticsearch = true
-			config.Elasticsearch = config.MetricServers[i]
+			// Compile the regular expressions
+			for i := range server.MetricSets {
+				if len(server.MetricSets[i].Fields) == 0 {
+					// User did not provide a field pattern, we assume the user wants all numeric fields in this index to be available.
+					server.MetricSets[i].Fields = append(server.MetricSets[i].Fields, defaultFieldSet)
+				}
+				metricSet := server.MetricSets[i]
+				for j := range metricSet.Fields {
+					field := metricSet.Fields[j]
+					metricSet.Fields[j].compiledPatterns = make([]regexp.Regexp, len(field.Patterns))
+					for k, pattern := range field.Patterns {
+						compiledPattern, err := regexp.Compile(pattern)
+						if err != nil {
+							klog.Fatalf("%s: error while compiling regular expression %s: %v", server.Name, pattern, err)
+						}
+						metricSet.Fields[j].compiledPatterns[k] = *compiledPattern
+					}
+				}
+			}
 		default:
-			klog.Fatalf("%s: unknown metric server type: %s", server.Type, server.Name)
+			klog.Fatalf("%s: unknown metric server type: %s", server.ServerType, server.Name)
 		}
 
 	}

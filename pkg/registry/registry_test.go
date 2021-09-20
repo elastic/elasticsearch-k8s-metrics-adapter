@@ -18,8 +18,6 @@ package registry
 
 import (
 	"net/http"
-	"reflect"
-	"sync"
 	"testing"
 
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
@@ -123,82 +121,9 @@ func TestRegistry_UpdateMetrics(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.fields.registry.UpdateMetrics(tt.args.metricsSrc, tt.args.cms, tt.args.ems)
+			tt.fields.registry.UpdateCustomMetrics(tt.args.metricsSrc, tt.args.cms)
+			tt.fields.registry.UpdateExternalMetrics(tt.args.metricsSrc, tt.args.ems)
 			tt.assertFunc(t, tt.fields.registry)
-		})
-	}
-}
-
-func TestRegistry_GetCustomMetricsSource(t *testing.T) {
-	type fields struct {
-		lock            sync.RWMutex
-		customMetrics   map[provider.CustomMetricInfo]*metricClients
-		externalMetrics map[provider.ExternalMetricInfo]*metricClients
-	}
-	type args struct {
-		info provider.CustomMetricInfo
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *client.Interface
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &Registry{
-				lock:            tt.fields.lock,
-				customMetrics:   tt.fields.customMetrics,
-				externalMetrics: tt.fields.externalMetrics,
-			}
-			got, err := r.GetCustomMetricClient(tt.args.info)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Registry.GetCustomMetricClient() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Registry.GetCustomMetricClient() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRegistry_GetExternalMetricsSource(t *testing.T) {
-	type fields struct {
-		lock            sync.RWMutex
-		customMetrics   map[provider.CustomMetricInfo]*metricClients
-		externalMetrics map[provider.ExternalMetricInfo]*metricClients
-	}
-	type args struct {
-		info provider.ExternalMetricInfo
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *client.Interface
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &Registry{
-				lock:            tt.fields.lock,
-				customMetrics:   tt.fields.customMetrics,
-				externalMetrics: tt.fields.externalMetrics,
-			}
-			got, err := r.GetExternalMetricClient(tt.args.info)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Registry.GetExternalMetricClient() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Registry.GetExternalMetricClient() = %v, want %v", got, tt.want)
-			}
 		})
 	}
 }

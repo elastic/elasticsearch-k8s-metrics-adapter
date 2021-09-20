@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/klog/v2"
 )
@@ -32,16 +33,16 @@ type Job interface {
 	WithErrorListeners(listeners ...ErrorListener) Job
 }
 
-var _ Job = &metricSource{}
+var _ Job = &metricJob{}
 
-func newSource(c client.Interface, wg *sync.WaitGroup) Job {
-	return &metricSource{
+func newMetricJob(c client.Interface, wg *sync.WaitGroup) Job {
+	return &metricJob{
 		c:  c,
 		wg: wg,
 	}
 }
 
-type metricSource struct {
+type metricJob struct {
 	c              client.Interface
 	wg             *sync.WaitGroup
 	syncDone       sync.Once
@@ -52,7 +53,7 @@ type metricSource struct {
 	previousExternalMetrics map[provider.ExternalMetricInfo]struct{}
 }
 
-func (m *metricSource) start() {
+func (m *metricJob) start() {
 	go func() {
 		// Attempt to get a first set of metrics
 		m.refreshMetrics()
@@ -63,48 +64,55 @@ func (m *metricSource) start() {
 	}()
 }
 
-func (m *metricSource) refreshMetrics() {
-	customMetrics, err := m.c.ListCustomMetricInfos()
-	if err != nil {
-		klog.Errorf(
-			"Failed to update external metric list from  %s / %s : %v",
+func (m *metricJob) refreshMetrics() {
+	if m.GetClient().GetConfiguration().MetricTypes.HasType(config.CustomMetricType) {
+		customMetrics, err := m.c.ListCustomMetricInfos()
+		if err != nil {
+			klog.Errorf(
+				"Failed to update custom metric list from  %s / %s : %v",
+				m.GetClient().GetConfiguration().Name,
+				m.GetClient().GetConfiguration().ClientConfig.Host,
+				err,
+			)
+			m.publishError(config.CustomMetricType, err)
+			return
+		}
+
+		klog.V(1).Infof(
+			"%d custom metrics from %s / %s",
+			len(customMetrics),
 			m.GetClient().GetConfiguration().Name,
 			m.GetClient().GetConfiguration().ClientConfig.Host,
-			err,
 		)
-		m.publishError(err)
-		return
+
+		for _, listener := range m.listeners {
+			listener.UpdateCustomMetrics(m.c, customMetrics)
+		}
 	}
 
-	klog.V(1).Infof(
-		"%d custom metrics from %s / %s",
-		len(customMetrics),
-		m.GetClient().GetConfiguration().Name,
-		m.GetClient().GetConfiguration().ClientConfig.Host,
-	)
-	m.previousCustomMetrics = customMetrics
+	if m.GetClient().GetConfiguration().MetricTypes.HasType(config.ExternalMetricType) {
+		externalMetrics, err := m.c.ListExternalMetrics()
+		if err != nil {
+			klog.Errorf(
+				"Failed to update external metric list from  %s / %s : %v",
+				m.GetClient().GetConfiguration().Name,
+				m.GetClient().GetConfiguration().ClientConfig.Host,
+				err,
+			)
+			m.publishError(config.ExternalMetricType, err)
+			return
+		}
 
-	externalMetrics, err := m.c.ListExternalMetrics()
-	if err != nil {
-		klog.Errorf(
-			"Failed to update external metric list from  %s / %s : %v",
+		klog.V(1).Infof(
+			"%d external metrics from %s / %s",
+			len(externalMetrics),
 			m.GetClient().GetConfiguration().Name,
 			m.GetClient().GetConfiguration().ClientConfig.Host,
-			err,
 		)
-		m.publishError(err)
-		return
-	}
 
-	klog.V(1).Infof(
-		"%d external metrics from %s / %s",
-		len(externalMetrics),
-		m.GetClient().GetConfiguration().Name,
-		m.GetClient().GetConfiguration().ClientConfig.Host,
-	)
-
-	for _, listener := range m.listeners {
-		listener.UpdateMetrics(m.c, customMetrics, externalMetrics)
+		for _, listener := range m.listeners {
+			listener.UpdateExternalMetrics(m.c, externalMetrics)
+		}
 	}
 
 	m.syncDone.Do(func() {
@@ -117,22 +125,22 @@ func (m *metricSource) refreshMetrics() {
 	})
 }
 
-func (m *metricSource) publishError(err error) {
+func (m *metricJob) publishError(metricType config.MetricType, err error) {
 	for _, listener := range m.errorListeners {
-		listener.OnError(m.c, err)
+		listener.OnError(m.c, metricType, err)
 	}
 }
 
-func (m *metricSource) GetClient() client.Interface {
+func (m *metricJob) GetClient() client.Interface {
 	return m.c
 }
 
-func (m *metricSource) WithMetricListeners(listeners ...MetricListener) Job {
+func (m *metricJob) WithMetricListeners(listeners ...MetricListener) Job {
 	m.listeners = append(m.listeners, listeners...)
 	return m
 }
 
-func (m *metricSource) WithErrorListeners(listeners ...ErrorListener) Job {
+func (m *metricJob) WithErrorListeners(listeners ...ErrorListener) Job {
 	m.errorListeners = append(m.errorListeners, listeners...)
 	return m
 }

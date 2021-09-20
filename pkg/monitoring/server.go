@@ -37,77 +37,101 @@ var (
 	clientErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "client_errors_total",
 		Help: "The total number of errors raised by a client",
-	}, []string{"client"})
+	}, []string{"client", "type"})
 	clientSuccess = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "client_success_total",
 		Help: "The total number of successful call to a metrics server",
-	}, []string{"client"})
-	customMetrics = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "custom_metrics",
-		Help: "The current number of custom metrics served by this metrics server",
-	}, []string{"client"})
-	externalMetrics = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "external_metrics",
-		Help: "The current number of external metrics served by this metrics server",
-	}, []string{"client"})
+	}, []string{"client", "type"})
+	metrics = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "metrics_count",
+		Help: "The current number of metrics served by this metrics server",
+	}, []string{"client", "type"})
 )
 
-type Counters map[string]int
-
-func (m *Server) ClientFailures() Counters {
-	m.lock.RLock()
-	defer m.lock.RUnlock()
-	c := make(map[string]int, len(m.clientFailures))
-	for k, v := range m.clientFailures {
-		c[k] = v
-	}
-	return c
+type Counters struct {
+	CustomMetrics   map[string]int `json:"customMetrics,omitempty"`
+	ExternalMetrics map[string]int `json:"externalMetrics,omitempty"`
 }
 
-func NewServer(config *config.Config, port int, enablePrometheusMetrics bool) *Server {
-	failureThreshold := config.ReadinessProbe.FailureThreshold
+func NewCounters() *Counters {
+	return &Counters{
+		CustomMetrics:   make(map[string]int),
+		ExternalMetrics: make(map[string]int),
+	}
+}
+
+func NewServer(adapterCfg *config.Config, port int, enablePrometheusMetrics bool) *Server {
+	failureThreshold := adapterCfg.ReadinessProbe.FailureThreshold
 	if failureThreshold == 0 {
 		failureThreshold = defaultFailureThreshold
 	}
-	clientFailures := make(map[string]int)
-	for _, clientCfg := range config.MetricServers {
-		clientFailures[clientCfg.Name] = -1
+	clientSuccesses := NewCounters()
+	for _, clientCfg := range adapterCfg.MetricServers {
+		if clientCfg.MetricTypes.HasType(config.CustomMetricType) {
+			clientSuccesses.CustomMetrics[clientCfg.Name] = 0
+		}
+		if clientCfg.MetricTypes.HasType(config.ExternalMetricType) {
+			clientSuccesses.ExternalMetrics[clientCfg.Name] = 0
+		}
 	}
 	return &Server{
 		lock:                    sync.RWMutex{},
+		adapterCfg:              adapterCfg,
 		monitoringPort:          port,
 		enablePrometheusMetrics: enablePrometheusMetrics,
-		clientFailures:          clientFailures,
+		clientFailures:          NewCounters(),
+		clientSuccesses:         clientSuccesses,
 		failureThreshold:        failureThreshold,
 	}
 }
 
 type Server struct {
 	lock                    sync.RWMutex
+	adapterCfg              *config.Config
 	monitoringPort          int
 	failureThreshold        int
 	enablePrometheusMetrics bool
-	clientFailures          Counters
+	clientFailures          *Counters
+	clientSuccesses         *Counters
 }
 
-func (m *Server) OnError(c client.Interface, err error) {
+func (m *Server) OnError(c client.Interface, metricType config.MetricType, err error) {
 	clientName := c.GetConfiguration().Name
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	m.clientFailures[clientName]++
-	clientErrors.WithLabelValues(c.GetConfiguration().Name).Inc()
+	if metricType == config.CustomMetricType {
+		m.clientFailures.CustomMetrics[clientName]++
+	}
+	if metricType == config.ExternalMetricType {
+		m.clientFailures.ExternalMetrics[clientName]++
+	}
+	clientErrors.WithLabelValues(c.GetConfiguration().Name, string(metricType)).Inc()
 }
 
-func (m *Server) UpdateMetrics(c client.Interface, cms map[provider.CustomMetricInfo]struct{}, ems map[provider.ExternalMetricInfo]struct{}) {
+func (m *Server) UpdateExternalMetrics(c client.Interface, ems map[provider.ExternalMetricInfo]struct{}) {
 	clientName := c.GetConfiguration().Name
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	// reset client failures as we got some metrics
-	m.clientFailures[clientName] = 0
-	clientSuccess.WithLabelValues(c.GetConfiguration().Name).Inc()
-	// update metrics stats
-	customMetrics.WithLabelValues(c.GetConfiguration().Name).Set(float64(len(cms)))
-	externalMetrics.WithLabelValues(c.GetConfiguration().Name).Set(float64(len(ems)))
+	m.clientFailures.ExternalMetrics[clientName] = 0
+	// increment success counters
+	m.clientSuccesses.ExternalMetrics[clientName]++
+	clientSuccess.WithLabelValues(c.GetConfiguration().Name, string(config.ExternalMetricType)).Inc()
+	// update external metrics stats
+	metrics.WithLabelValues(c.GetConfiguration().Name, string(config.ExternalMetricType)).Set(float64(len(ems)))
+}
+
+func (m *Server) UpdateCustomMetrics(c client.Interface, cms map[provider.CustomMetricInfo]struct{}) {
+	clientName := c.GetConfiguration().Name
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	// reset client failures as we got some metrics
+	m.clientFailures.CustomMetrics[clientName] = 0
+	// increment success counters
+	m.clientSuccesses.CustomMetrics[clientName]++
+	clientSuccess.WithLabelValues(c.GetConfiguration().Name, string(config.CustomMetricType)).Inc()
+	// update custom metrics stats
+	metrics.WithLabelValues(c.GetConfiguration().Name, string(config.CustomMetricType)).Set(float64(len(cms)))
 }
 
 func (m *Server) Start() {
@@ -120,30 +144,44 @@ func (m *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	status := http.StatusOK
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	for c, failures := range m.clientFailures {
-		if failures == -1 {
+	for _, server := range m.adapterCfg.MetricServers {
+		if customMetricsSuccess, hasCustomMetrics := m.clientSuccesses.CustomMetrics[server.Name]; hasCustomMetrics && customMetricsSuccess == 0 {
 			status = http.StatusServiceUnavailable
-			klog.Errorf("client %s has not retrieved an initial set of metrics yet", c)
+			klog.Errorf("client %s has not retrieved an initial set of custom metrics yet", server.Name)
 			break
 		}
-		if failures >= m.failureThreshold {
+
+		if externalMetricsSuccess, hasExternalMetrics := m.clientSuccesses.ExternalMetrics[server.Name]; hasExternalMetrics && externalMetricsSuccess == 0 {
 			status = http.StatusServiceUnavailable
-			klog.Errorf("client %s got %d consecutive failures", c, failures)
+			klog.Errorf("client %s has not retrieved an initial set of external metrics yet", server.Name)
+			break
+		}
+
+		if m.clientFailures.CustomMetrics[server.Name] >= m.failureThreshold {
+			status = http.StatusServiceUnavailable
+			klog.Errorf("client %s got %d consecutive failures while retrieving custom metrics", server.Name, m.clientFailures.CustomMetrics[server.Name])
+			break
+		}
+
+		if m.clientFailures.ExternalMetrics[server.Name] >= m.failureThreshold {
+			status = http.StatusServiceUnavailable
+			klog.Errorf("client %s got %d consecutive failures while retrieving external metrics", server.Name, m.clientFailures.ExternalMetrics[server.Name])
 			break
 		}
 	}
-	err := writeJSONResponse(writer, status, ClientsHealthResponse{ClientFailures: m.clientFailures})
+	err := writeJSONResponse(writer, status, ClientsHealthResponse{ClientFailures: m.clientFailures, ClientOk: m.clientSuccesses})
 	if err != nil {
 		klog.Errorf("Failed to write monitoring JSON response: %v", err)
 	}
 }
 
 type ClientsHealthResponse struct {
-	ClientFailures map[string]int `json:"clientFailures,omitempty"`
+	ClientFailures *Counters `json:"consecutiveFailures,omitempty"`
+	ClientOk       *Counters `json:"successTotal,omitempty"`
 }
 
 func writeJSONResponse(w http.ResponseWriter, code int, resp interface{}) error {
-	enc, err := json.Marshal(resp)
+	enc, err := json.MarshalIndent(resp, "", "\t")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return err

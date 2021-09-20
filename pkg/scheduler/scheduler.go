@@ -61,7 +61,7 @@ func NewScheduler(clients ...client.Interface) *Scheduler {
 		sources: make([]Job, len(clients)),
 	}
 	for i := range clients {
-		scheduler.sources[i] = newSource(clients[i], scheduler.wg)
+		scheduler.sources[i] = newMetricJob(clients[i], scheduler.wg)
 	}
 	scheduler.wg.Add(len(clients))
 	return scheduler
@@ -70,7 +70,7 @@ func NewScheduler(clients ...client.Interface) *Scheduler {
 // WithClients adds more metrics clients to the scheduler.
 func (s *Scheduler) WithClients(clients ...client.Interface) *Scheduler {
 	for i := range clients {
-		source := newSource(clients[i], s.wg)
+		source := newMetricJob(clients[i], s.wg)
 		s.sources = append(s.sources, source)
 
 	}
