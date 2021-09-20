@@ -109,6 +109,12 @@ spec:
               name: https
             - containerPort: 8080
               name: http
+            - containerPort: 9090
+              name: monitoring
+          readinessProbe:
+            httpGet:
+              port: monitoring
+              path: /readyz
           volumeMounts:
             - name: config-volume
               mountPath: /config

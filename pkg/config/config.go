@@ -47,18 +47,30 @@ func (o *HTTPClientConfig) IsDefined() bool {
 }
 
 type MetricServer struct {
-	Name         string            `yaml:"name"`
-	Type         string            `yaml:"type"`
-	ClientConfig *HTTPClientConfig `yaml:"clientConfig,omitempty"`
-	MetricSets   MetricSets        `yaml:"metricSets,omitempty"` // only valid if type is elasticsearch
+	Name         string           `yaml:"name"`
+	Type         string           `yaml:"type"`
+	ClientConfig HTTPClientConfig `yaml:"clientConfig,omitempty"`
+	MetricSets   MetricSets       `yaml:"metricSets,omitempty"` // only valid if type is elasticsearch
+	Rename       *Matches         `yaml:"rename,omitempty"`
+	Priority     int              `yaml:"-"`
+}
+
+type Matches struct {
+	Matches string `yaml:"matches"`
+	As      string `yaml:"as"`
+}
+
+type ReadinessProbe struct {
+	FailureThreshold int `yaml:"failureThreshold"`
 }
 
 type MetricServers []MetricServer
 
 type Config struct {
-	MetricServers []MetricServer `yaml:"metricServers"`
-	Upstream      MetricServer   `yaml:"-"`
-	Elasticsearch MetricServer   `yaml:"-"`
+	ReadinessProbe ReadinessProbe `yaml:"failureThreshold"`
+	MetricServers  []MetricServer `yaml:"metricServers"`
+	Upstream       *MetricServer  `yaml:"-"`
+	Elasticsearch  MetricServer   `yaml:"-"`
 }
 
 type MetricSets []MetricSet
@@ -137,6 +149,11 @@ func From(source []byte) (*Config, error) {
 		return nil, err
 	}
 
+	// Set priority given the position in the array
+	for i := range config.MetricServers {
+		config.MetricServers[i].Priority = i
+	}
+
 	// Ensure that configuration is valid.
 	checkOrDie(config)
 
@@ -165,33 +182,39 @@ func From(source []byte) (*Config, error) {
 func checkOrDie(config *Config) {
 	var hasElasticsearch, hasUpstream bool
 	for i, server := range config.MetricServers {
+		if server.Rename != nil {
+			if len(server.Rename.Matches) == 0 || len(server.Rename.As) == 0 {
+				klog.Fatalf("%s: rename directive must contain both \"matches\" and \"as\" fields", server.Name)
+			}
+		}
 		switch server.Type {
 		case "custom":
 			if hasUpstream {
 				klog.Fatalf("only one upstream custom metric server is allowed")
 			}
 			if !server.ClientConfig.IsDefined() {
-				klog.Fatalf("HTTP client configuration is not defined in upstream custom metric server")
+				klog.Fatalf("%s: HTTP client configuration is not defined in upstream custom metric server", server.Name)
 			}
 			if len(server.MetricSets) > 0 {
-				klog.Fatalf("metricSets is not allowed in upstream custom metric server")
+				klog.Fatalf("%s: metricSets is not allowed in upstream custom metric server", server.Name)
 			}
 			hasUpstream = true
-			config.Upstream = config.MetricServers[i]
+			upstreamCfg := config.MetricServers[i]
+			config.Upstream = &upstreamCfg
 		case "elasticsearch":
 			if hasElasticsearch {
-				klog.Fatalf("only one Elasticsearch instance is allowed")
+				klog.Fatalf("%s: only one Elasticsearch instance is allowed", server.Name)
 			}
 			if len(server.MetricSets) == 0 {
-				klog.Warningf("no metricSets defined")
+				klog.Warningf("%s: no metricSets defined", server.Name)
 			}
 			if !server.ClientConfig.IsDefined() {
-				klog.Fatalf("Elasticsearch requires clientConfig to be set")
+				klog.Fatalf("%s: Elasticsearch requires clientConfig to be set", server.Name)
 			}
 			hasElasticsearch = true
 			config.Elasticsearch = config.MetricServers[i]
 		default:
-			klog.Fatalf("unknown metric server type: %s", server.Type)
+			klog.Fatalf("%s: unknown metric server type: %s", server.Type, server.Name)
 		}
 
 	}

@@ -20,6 +20,9 @@ metricServers:
         enabled: true
         insecureSkipTLSVerify: false
         caFile: /mnt/elastic-internal/elasticsearch-association/default/elasticsearch/certs/ca.crt
+    rename:
+      matches: "^(.*)$"
+      as: "${1}@elasticsearch-metrics-cluster"
     metricSets:
       - indices: [ 'metrics-*' ]     # metrics from Agents
       #  - patterns: [ '^.*$' ]  # if no pattern is provided all fields with a numeric field type are exposed.

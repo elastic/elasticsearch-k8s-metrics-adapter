@@ -20,16 +20,16 @@ import (
 	"flag"
 	"os"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/common"
+	"github.com/elastic/elasticsearch-adapter/pkg/client/custom_api"
+	"github.com/elastic/elasticsearch-adapter/pkg/client/elasticsearch"
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/elastic/elasticsearch-adapter/pkg/lister"
-	provider2 "github.com/elastic/elasticsearch-adapter/pkg/provider"
-	esclient "github.com/elastic/elasticsearch-adapter/pkg/provider/providers/elasticsearch/client"
+	"github.com/elastic/elasticsearch-adapter/pkg/monitoring"
+	"github.com/elastic/elasticsearch-adapter/pkg/provider"
+	"github.com/elastic/elasticsearch-adapter/pkg/registry"
+	"github.com/elastic/elasticsearch-adapter/pkg/scheduler"
 	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
 	"go.elastic.co/apm"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
-	custom_metrics_client "k8s.io/metrics/pkg/client/custom_metrics"
 
 	// Load all auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -40,7 +40,7 @@ import (
 
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/apiserver"
 	basecmd "github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/cmd"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
+	cm_provider "github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 
@@ -49,15 +49,14 @@ import (
 
 type ElasticsearchAdapter struct {
 	basecmd.AdapterBase
-	Insecure bool
+	monitoringServer *monitoring.Server
+
+	Insecure                 bool
+	PrometheusMetricsEnabled bool
+	MonitoringPort           int
 }
 
-func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
-	adapterCfg, err := config.Default()
-	if err != nil {
-		klog.Fatalf("unable to parse adapter configuration: %v", err)
-	}
-
+func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_provider.MetricsProvider {
 	client, err := a.DynamicClient()
 	if err != nil {
 		klog.Fatalf("unable to construct dynamic client: %v", err)
@@ -68,21 +67,20 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 		klog.Fatalf("unable to construct client REST mapper: %v", err)
 	}
 
-	esClient, err := esclient.NewElasticsearchClient(adapterCfg.Elasticsearch.ClientConfig)
+	tracer := createTracer()
+
+	esMetricClient, err := elasticsearch.NewElasticsearchClient(
+		adapterCfg.Elasticsearch,
+		client,
+		mapper,
+		tracer,
+	)
 	if err != nil {
 		klog.Fatalf("unable to construct Elasticsearch client: %v", err)
 	}
+	scheduler := scheduler.NewScheduler(esMetricClient)
 
-	tracer := createTracer()
-
-	var metricLister common.MetricLister
-	if adapterCfg.Upstream.ClientConfig.IsDefined() {
-		discoveryClient, err := a.DiscoveryClient()
-		if err != nil {
-			klog.Fatalf("unable to construct discoveryClient client: %v", err)
-		}
-		apiVersionsGetter := custom_metrics_client.NewAvailableAPIsGetter(discoveryClient)
-
+	if adapterCfg.Upstream != nil {
 		clientCfg, err := a.ClientConfig()
 		if err != nil {
 			klog.Fatalf("unable to construct Kubernetes client config: %v", err)
@@ -91,25 +89,20 @@ func (a *ElasticsearchAdapter) makeProviderOrDie() provider.MetricsProvider {
 		if err != nil {
 			klog.Fatalf("unable to construct Kubernetes client: %v", err)
 		}
-		upstreamConfig, err := adapterCfg.Upstream.ClientConfig.NewRestClientConfig(kubeClient, clientCfg)
+		metricApiClient, err := custom_api.NewMetricApiClientProvider(clientCfg, mapper).NewClient(kubeClient, *adapterCfg.Upstream)
 		if err != nil {
-			klog.Fatalf("unable to construct discovery client for upstream: %v", err)
+			klog.Fatalf("unable to construct Kubernetes custom metric API client: %v", err)
 		}
-		upstreamRestClient, err := discovery.NewDiscoveryClientForConfig(upstreamConfig)
-		if err != nil {
-			klog.Fatalf("unable to construct discovery client for upstream: %v", err)
-		}
-		upstreamMetricClient := custom_metrics_client.NewForConfig(upstreamConfig, mapper, apiVersionsGetter)
-		metricLister = lister.NewMetricListerWithUpstream(adapterCfg, esClient, client, mapper, upstreamMetricClient, upstreamRestClient, tracer)
-	} else {
-		metricLister = lister.NewMetricLister(adapterCfg, client, mapper, esClient, tracer)
+		scheduler.WithClients(metricApiClient)
 	}
 
-	// Create and start metric lister
-	metricLister.Start()
-
-	// Create provider
-	return provider2.NewAggregationProvider(metricLister, tracer)
+	r := registry.NewRegistry()
+	scheduler.
+		WithMetricListeners(a.monitoringServer, r).
+		WithErrorListeners(a.monitoringServer).
+		Start().
+		WaitInitialSync()
+	return provider.NewAggregationProvider(r, tracer)
 }
 
 func createTracer() *apm.Tracer {
@@ -137,10 +130,24 @@ func main() {
 	cmd.OpenAPIConfig.Info.Version = "0.1.0"
 
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
+	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
+	cmd.Flags().BoolVar(&cmd.PrometheusMetricsEnabled, "enable-metrics", false, "enable Prometheus metrics endpoint /metrics on the monitoring port")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
-	cmd.Flags().Parse(os.Args)
+	err := cmd.Flags().Parse(os.Args)
+	if err != nil {
+		klog.Fatalf("unable to parse flags: %v", err)
+	}
 
-	elasticsearchProvider := cmd.makeProviderOrDie()
+	// Parse the adapter configuration
+	adapterCfg, err := config.Default()
+	if err != nil {
+		klog.Fatalf("unable to parse adapter configuration: %v", err)
+	}
+
+	cmd.monitoringServer = monitoring.NewServer(adapterCfg, cmd.MonitoringPort, cmd.PrometheusMetricsEnabled)
+	go cmd.monitoringServer.Start()
+
+	elasticsearchProvider := cmd.makeProviderOrDie(adapterCfg)
 	cmd.WithCustomMetrics(elasticsearchProvider)
 	cmd.WithExternalMetrics(elasticsearchProvider)
 	if cmd.Insecure {

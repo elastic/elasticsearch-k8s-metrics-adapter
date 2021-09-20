@@ -17,9 +17,9 @@
 package provider
 
 import (
-	"errors"
+	"fmt"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/common"
+	"github.com/elastic/elasticsearch-adapter/pkg/registry"
 	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	"go.elastic.co/apm"
 	"k8s.io/apimachinery/pkg/labels"
@@ -29,47 +29,53 @@ import (
 	"k8s.io/metrics/pkg/apis/external_metrics"
 )
 
-// elasticsearchProvider is an implementation of provider.MetricsProvider which retrieve metrics from an Elasticsearch cluster.
+// aggregationProvider is an implementation of provider.MetricsProvider which retrieve metrics from a set of metric clients.
 type aggregationProvider struct {
-	common.MetricLister
-	tracer *apm.Tracer
+	registry *registry.Registry
+	tracer   *apm.Tracer
 }
 
-// NewAggregationProvider returns an instance of the Elasticsearch provider, along with its restful.WebService that opens endpoints to post custom metrics stored in Elasticsearch.
+// NewAggregationProvider returns an instance of the aggregation provider.
 func NewAggregationProvider(
-	metricLister common.MetricLister,
+	registry *registry.Registry,
 	tracer *apm.Tracer,
 ) provider.MetricsProvider {
 	return &aggregationProvider{
-		MetricLister: metricLister,
-		tracer:       tracer,
+		registry: registry,
+		tracer:   tracer,
 	}
 }
 
 func (p *aggregationProvider) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
 	klog.Infof("-> aggregation.GetMetricByName(name=%v,info=%v,metricSelector=%v)", name, info, metricSelector)
-	metricsProvider := p.MetricLister.GetMetricsProvider(info.Metric)
-	if metricsProvider == nil {
-		return nil, provider.NewMetricNotFoundError(info.GroupResource, info.Metric)
+	metricClient, err := p.registry.GetCustomMetricClient(info)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get metrics backend: %v", err)
 	}
-	return metricsProvider.GetMetricByName(name, info, metricSelector)
+	return metricClient.GetMetricByName(name, info, metricSelector)
 }
 
 func (p *aggregationProvider) GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
 	klog.Infof("-> aggregation.GetMetricBySelector(namespace=%v,selector=%v,info=%v,metricSelector=%v)", namespace, selector, info, metricSelector)
-	metricsProvider := p.MetricLister.GetMetricsProvider(info.Metric)
-	if metricsProvider == nil { // No default metrics provider
-		return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, "", metricSelector)
+	metricClient, err := p.registry.GetCustomMetricClient(info)
+	if err != nil {
+		return nil, err
 	}
-	return metricsProvider.GetMetricBySelector(namespace, selector, info, metricSelector)
+	return metricClient.GetMetricBySelector(namespace, selector, info, metricSelector)
 }
 
-func (p *aggregationProvider) GetExternalMetric(_ string, _ labels.Selector, _ provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
-	// TODO: Implement
-	return nil, errors.New("GetExternalMetric not implemented")
+func (p *aggregationProvider) GetExternalMetric(namespace string, metricSelector labels.Selector, info provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
+	metricClient, err := p.registry.GetExternalMetricClient(info)
+	if err != nil {
+		return nil, err
+	}
+	return metricClient.GetExternalMetric(info.Metric, namespace, metricSelector)
+}
+
+func (p *aggregationProvider) ListAllMetrics() []provider.CustomMetricInfo {
+	return p.registry.ListAllCustomMetrics()
 }
 
 func (p *aggregationProvider) ListAllExternalMetrics() []provider.ExternalMetricInfo {
-	klog.Error("not implemented: ListAllExternalMetrics()")
-	return []provider.ExternalMetricInfo{}
+	return p.registry.ListAllExternalMetrics()
 }

@@ -33,17 +33,18 @@ func TestFrom(t *testing.T) {
 	tests := []struct {
 		name              string
 		args              args
-		wantUpstream      MetricServer
+		wantUpstream      *MetricServer // upstream is optional
 		wantElasticsearch MetricServer
 		wantErr           bool
 	}{
 		{
 			name: "Happy path 1",
 			args: args{file: "config1.yaml"},
-			wantUpstream: MetricServer{
-				Name: "my-existing-metrics-adapter",
-				Type: "custom",
-				ClientConfig: &HTTPClientConfig{
+			wantUpstream: &MetricServer{
+				Name:     "my-existing-metrics-adapter",
+				Type:     "custom",
+				Priority: 0,
+				ClientConfig: HTTPClientConfig{
 					Host: "https://custom-metrics-apiserver.custom-metrics.svc",
 					AuthenticationConfig: &AuthenticationConfig{
 						BearerTokenFile: "/run/secrets/kubernetes.io/serviceaccount/token",
@@ -55,9 +56,10 @@ func TestFrom(t *testing.T) {
 				},
 			},
 			wantElasticsearch: MetricServer{
-				Name: "elasticsearch-metrics-cluster",
-				Type: "elasticsearch",
-				ClientConfig: &HTTPClientConfig{
+				Name:     "elasticsearch-metrics-cluster",
+				Type:     "elasticsearch",
+				Priority: 1,
+				ClientConfig: HTTPClientConfig{
 					Host: "https://elasticsearch-es-http.default.svc:9200",
 					AuthenticationConfig: &AuthenticationConfig{
 						Username: "elastic",
@@ -112,8 +114,8 @@ func TestFrom(t *testing.T) {
 				t.Errorf("From() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			assert.Equal(t, got.Elasticsearch, tt.wantElasticsearch)
-			assert.Equal(t, got.Upstream, tt.wantUpstream)
+			assert.Equal(t, tt.wantElasticsearch, got.Elasticsearch)
+			assert.Equal(t, tt.wantUpstream, got.Upstream)
 		})
 	}
 }

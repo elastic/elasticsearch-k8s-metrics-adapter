@@ -2,7 +2,7 @@
 ## upstream server.
 ## Only 1 Elasticsearch cluster and 1 upstream are allowed.
 metricServers:
-  - name: elasticsearch-metrics-cluster
+  - name: elasticsearch-observability-cluster
     type: elasticsearch # An elasticsearch metric server serves the metrics stored in an Elasticsearch cluster.
     clientConfig:
       host: https://elasticsearch-es-http.default.svc:9200
@@ -12,6 +12,10 @@ metricServers:
       tls:
         insecureSkipTLSVerify: true # keep it to false in order to enforce cert. verification.
         # caFile: /mnt/elasticsearch/ca.crt # to be mounted in the container
+    ## rename can be used to change the name of the metrics served by this metrics server.
+    #rename:
+    #  matches: "^(.*)$"
+    #  as: "${1}.elasticsearch"
     metricSets: ## metricSets defines the Elasticsearch fields to be exposed to the K8S autoscaling controllers.
       - indices: [ 'metrics-*' ]  # expose all the metrics collected by Agents
       - indices: [ 'metricbeat-*' ]
