@@ -39,13 +39,12 @@ import (
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
 
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/apiserver"
-	basecmd "github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/cmd"
-	cm_provider "github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
+	generatedopenapi "github.com/elastic/elasticsearch-adapter/generated/openapi"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
-
-	generatedopenapi "github.com/elastic/elasticsearch-adapter/generated/openapi"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver"
+	basecmd "sigs.k8s.io/custom-metrics-apiserver/pkg/cmd"
+	cm_provider "sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 type ElasticsearchAdapter struct {

@@ -21,10 +21,10 @@ import (
 	"testing"
 
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 func TestRegistry_UpdateMetrics(t *testing.T) {

@@ -22,8 +22,8 @@ import (
 
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 type Job interface {

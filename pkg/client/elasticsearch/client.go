@@ -1,18 +1,18 @@
-// Licensed to Elasticsearch B.V. under one or more contributor
-// license agreements. Elasticsearch B.V. licenses this file to
-// you under the Apache License, Version 2.0 (the "License");
-// you may  not use this file except in compliance with the
-// License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+/*
+Copyright 2021.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package elasticsearch
 
@@ -30,8 +30,6 @@ import (
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
 	esv7 "github.com/elastic/go-elasticsearch/v7"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider/helpers"
 	"go.elastic.co/apm"
 	"go.elastic.co/apm/module/apmelasticsearch"
 	apierr "k8s.io/apimachinery/pkg/api/errors"
@@ -43,6 +41,8 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
 	"k8s.io/metrics/pkg/apis/external_metrics"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider/helpers"
 )
 
 const (

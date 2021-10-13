@@ -20,8 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	cm_rest "github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/apiserver/registry/rest"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
+	cm_rest "sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver/registry/rest"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	"k8s.io/apimachinery/pkg/labels"
@@ -117,14 +117,14 @@ func (r *REST) List(ctx context.Context, options *metainternalversion.ListOption
 
 	// handle namespaced and root metrics
 	if name == "*" {
-		return r.handleWildcardOp(namespace, groupResource, selector, metricName, metricLabelSelector)
+		return r.handleWildcardOp(ctx, namespace, groupResource, selector, metricName, metricLabelSelector)
 	} else {
-		return r.handleIndividualOp(namespace, groupResource, name, metricName, metricLabelSelector)
+		return r.handleIndividualOp(ctx, namespace, groupResource, name, metricName, metricLabelSelector)
 	}
 }
 
-func (r *REST) handleIndividualOp(namespace string, groupResource schema.GroupResource, name string, metricName string, metricLabelSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
-	singleRes, err := r.cmProvider.GetMetricByName(types.NamespacedName{Namespace: namespace, Name: name}, provider.CustomMetricInfo{
+func (r *REST) handleIndividualOp(ctx context.Context, namespace string, groupResource schema.GroupResource, name string, metricName string, metricLabelSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
+	singleRes, err := r.cmProvider.GetMetricByName(ctx, types.NamespacedName{Namespace: namespace, Name: name}, provider.CustomMetricInfo{
 		GroupResource: groupResource,
 		Metric:        metricName,
 		Namespaced:    namespace != "",
@@ -138,8 +138,8 @@ func (r *REST) handleIndividualOp(namespace string, groupResource schema.GroupRe
 	}, nil
 }
 
-func (r *REST) handleWildcardOp(namespace string, groupResource schema.GroupResource, selector labels.Selector, metricName string, metricLabelSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
-	return r.cmProvider.GetMetricBySelector(namespace, selector, provider.CustomMetricInfo{
+func (r *REST) handleWildcardOp(ctx context.Context, namespace string, groupResource schema.GroupResource, selector labels.Selector, metricName string, metricLabelSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
+	return r.cmProvider.GetMetricBySelector(ctx, namespace, selector, provider.CustomMetricInfo{
 		GroupResource: groupResource,
 		Metric:        metricName,
 		Namespaced:    namespace != "",

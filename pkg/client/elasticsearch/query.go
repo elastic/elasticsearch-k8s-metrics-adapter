@@ -29,13 +29,13 @@ import (
 	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
 	esv7 "github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 type QueryParams struct {

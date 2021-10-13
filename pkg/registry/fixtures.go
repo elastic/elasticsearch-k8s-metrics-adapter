@@ -21,12 +21,12 @@ import (
 
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
 	"k8s.io/metrics/pkg/apis/external_metrics"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 type fakeMetricsClient struct {

@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,6 +27,7 @@ import (
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/metrics/pkg/apis/external_metrics"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 // REST is a wrapper for CustomMetricsProvider that provides implementation for Storage and Lister
@@ -77,5 +77,5 @@ func (r *REST) List(ctx context.Context, options *metainternalversion.ListOption
 	}
 	metricName := requestInfo.Resource
 
-	return r.emProvider.GetExternalMetric(namespace, metricSelector, provider.ExternalMetricInfo{Metric: metricName})
+	return r.emProvider.GetExternalMetric(ctx, namespace, metricSelector, provider.ExternalMetricInfo{Metric: metricName})
 }

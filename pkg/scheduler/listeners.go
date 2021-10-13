@@ -19,7 +19,7 @@ package scheduler
 import (
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 type MetricListener interface {

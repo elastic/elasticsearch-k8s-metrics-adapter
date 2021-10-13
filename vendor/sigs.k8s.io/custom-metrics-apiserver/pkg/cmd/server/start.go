@@ -24,7 +24,7 @@ import (
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/apiserver"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver"
 )
 
 type CustomMetricsAdapterServerOptions struct {
@@ -32,6 +32,7 @@ type CustomMetricsAdapterServerOptions struct {
 	SecureServing  *genericoptions.SecureServingOptionsWithLoopback
 	Authentication *genericoptions.DelegatingAuthenticationOptions
 	Authorization  *genericoptions.DelegatingAuthorizationOptions
+	Audit          *genericoptions.AuditOptions
 	Features       *genericoptions.FeatureOptions
 
 	// OpenAPIConfig
@@ -43,6 +44,7 @@ func NewCustomMetricsAdapterServerOptions() *CustomMetricsAdapterServerOptions {
 		SecureServing:  genericoptions.NewSecureServingOptions().WithLoopback(),
 		Authentication: genericoptions.NewDelegatingAuthenticationOptions(),
 		Authorization:  genericoptions.NewDelegatingAuthorizationOptions(),
+		Audit:          genericoptions.NewAuditOptions(),
 		Features:       genericoptions.NewFeatureOptions(),
 	}
 
@@ -72,6 +74,10 @@ func (o CustomMetricsAdapterServerOptions) Config() (*apiserver.Config, error) {
 		return nil, err
 	}
 	if err := o.Authorization.ApplyTo(&serverConfig.Authorization); err != nil {
+		return nil, err
+	}
+
+	if err := o.Audit.ApplyTo(serverConfig); err != nil {
 		return nil, err
 	}
 

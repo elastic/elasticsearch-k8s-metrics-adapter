@@ -166,6 +166,9 @@ func checkOrDie(config *Config) {
 				klog.Fatalf("%s: rename directive must contain both \"matches\" and \"as\" fields", server.Name)
 			}
 		}
+		if server.ServerType == "" {
+			klog.Fatalf("%s: server type is not set", server.Name)
+		}
 		switch server.ServerType {
 		case "custom":
 			if !server.ClientConfig.IsDefined() {
@@ -201,7 +204,7 @@ func checkOrDie(config *Config) {
 				}
 			}
 		default:
-			klog.Fatalf("%s: unknown metric server type: %s", server.ServerType, server.Name)
+			klog.Fatalf("%s: unknown metric server type: %s", server.Name, server.ServerType)
 		}
 
 	}

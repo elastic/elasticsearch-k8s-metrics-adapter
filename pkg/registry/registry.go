@@ -23,10 +23,10 @@ import (
 
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-adapter/pkg/scheduler"
-	"github.com/kubernetes-sigs/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 )
 
 // Registry maintains a list of the available metrics and the associated metrics sources.
@@ -226,6 +226,7 @@ func (r *Registry) ListAllCustomMetrics() []provider.CustomMetricInfo {
 		infos[count] = k
 		count++
 	}
+	klog.V(1).Infof("%d custom metrics served by the adapter", len(infos))
 	return infos
 }
 
@@ -238,5 +239,6 @@ func (r *Registry) ListAllExternalMetrics() []provider.ExternalMetricInfo {
 		infos[count] = k
 		count++
 	}
+	klog.V(1).Infof("%d external metrics served by the adapter", len(infos))
 	return infos
 }
