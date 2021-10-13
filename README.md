@@ -1,25 +1,16 @@
-# Elasticsearch Adapter for Kubernetes Metrics APIs
-
-> :warning: **This project is a proof of concept** which demonstrates how metrics collected by Metricbeat, and stored in Elasticsearch, can be used by the K8S Horizontal Pod Autoscaler to automatically scale workloads on K8S clusters.
+# Elasticsearch Adapter for the Kubernetes Metrics APIs
 
 The Elasticsearch adapter for the K8S metrics APIs is an implementation of the Kubernetes
 [resource metrics](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/instrumentation/resource-metrics-api.md) and
 [custom metrics](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/instrumentation/custom-metrics-api.md) APIs.
 
-It can be used to automatically scale applications, using the [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale) querying metrics collected by [Metricbeat](https://www.elastic.co/beats/metricbeat) and stored in an [Elasticsearch](https://www.elastic.co/elasticsearch/) cluster.
+It can be used to automatically scale applications, using the [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale) querying metrics collected by [Metricbeat](https://www.elastic.co/beats/metricbeat) or [Agent](https://www.elastic.co/elastic-agent), and stored in [Elasticsearch](https://www.elastic.co/elasticsearch/).
 
 ## Deployment
 
-The [`deploy/elasticsearch-adapter.yaml`](deploy/elasticsearch-adapter.yaml) file contains a manifest to deploy the latest image of the adapter on your Kubernetes cluster.
-
-Before applying this manifest a `Secret` named `elasticsearch` must be created. It must contain the following entries to help the adapter to connect to the Elasticsearch cluster which holds the metrics:
-- `username`
-- `password`
-- `url` - must contain the protocol and the port, for example: https://35.240.36.192:9200
+Refer to [deploy/README.md](deploy/README.md) to configure and deploy the metrics adapter.
 
 ## Configuration
-
-Configuration file is expected to be available in the file `config/config.yml`. An example is available [here](deploy/elasticsearch-adapter.yaml).
 
 ### Metrics discovery
 
@@ -30,7 +21,6 @@ metricSets:
   - indices: [ 'metricbeat-*' ] # set of regular expressions to list the indices to be searched
     fields:
       - patterns: [ '^prometheus\.metrics\.' ] # set of regular expressions to list the fields exposed as metrics by the server
-        labels: [ '^prometheus\.labels\.(.*)' ] # only a teaser, not used for the moment
       - patterns: [ '^kibana\.stats\.' ] # because we need Kibana metrics for the example below
 ```
 
@@ -86,7 +76,7 @@ Complex metrics can be calculated using a custom query, for example:
 
 The `body` field must contain a valid Elasticsearch query. `metricPath` and `timestampPath` must contain valid [JQ queries](https://stedolan.github.io/jq/manual/#Basicfilters) used to get the metric value and the timestamp from the Elasticsearch response.
 
-### Upstream metric server
+### Forwarding metrics request to existing metrics adapters
 
 You may want to also server some metrics from an existing third party metric server like Prometheus or Stackdriver. This can be done by adding the third party adapter API endpoint to the `metricServers` list:
 
@@ -94,7 +84,7 @@ You may want to also server some metrics from an existing third party metric ser
 ## Metric server of type "custom" can be used to reference an existing or third party metric adapter service.
 metricServers:
   - name: my-existing-metrics-adapter
-    type: custom # To be used to forward metric requests to a server which complies with https://github.com/kubernetes/metrics
+    serverType: custom # To be used to forward metric requests to a server which complies with https://github.com/kubernetes/metrics
     clientConfig:
       host: https://custom-metrics-apiserver.custom-metrics.svc
       tls:
