@@ -66,7 +66,7 @@ Create the required Kubernetes resources and deploy the adapter as part of a `De
 The metrics adapter Pod should be eventually running:
 
 ```
-$ kublectl get pod -n elastic-custom-metrics -l app=elasticsearch-metrics-apiserver
+$ kubectl get pod -n elastic-custom-metrics -l app=elasticsearch-metrics-apiserver
 NAME                                               READY   STATUS    RESTARTS   AGE
 elasticsearch-metrics-apiserver-6c55666c85-gm7gw   1/1     Running   0          15s
 ```

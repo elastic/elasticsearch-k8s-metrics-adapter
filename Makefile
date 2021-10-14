@@ -38,8 +38,6 @@ generated/openapi/zz_generated.openapi.go: go.mod go.sum
 	    -r /dev/null
 
 docker-build: generated/openapi/zz_generated.openapi.go
-	sed -i.bak 's|REGISTRY|'${REGISTRY}'|g' deploy/elasticsearch-adapter.yaml
-	rm -rf $(TEMP_DIR) deploy/elasticsearch-adapter.yaml.bak
 	docker build . \
 			--progress=plain \
 			--build-arg VERSION='$(VERSION)' \
