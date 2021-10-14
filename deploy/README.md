@@ -26,10 +26,10 @@ data:
       - name: elasticsearch-metrics-cluster
         serverType: elasticsearch
         clientConfig:
-          host: ${ELASTICSEARCH_URL}
+          host: \${ELASTICSEARCH_URL}
           authentication:
-            username: ${ELASTICSEARCH_USER}
-            password: ${ELASTICSEARCH_PASSWORD}
+            username: \${ELASTICSEARCH_USER}
+            password: \${ELASTICSEARCH_PASSWORD}
           tls:
             insecureSkipTLSVerify: true
         metricSets:
