@@ -14,7 +14,7 @@ FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4
 
 ARG VERSION
 
-LABEL name="Elastic Cloud on Kubernetes" \
+LABEL name="Elasticsearch Adapter for the Kubernetes Metrics API" \
       io.k8s.display-name="Elasticsearch " \
       maintainer="eck@elastic.co" \
       vendor="Elastic" \
