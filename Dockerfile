@@ -28,4 +28,8 @@ LABEL name="Elasticsearch Adapter for the Kubernetes Metrics API" \
 RUN microdnf update --setopt=tsflags=nodocs && microdnf clean all
 
 COPY --from=builder /go/src/github.com/elastic/elasticsearch-adapter/elasticsearch-adapter /
+
+# Copy NOTICE.txt and LICENSE.txt into the image
+COPY ["NOTICE.txt", "LICENSE.txt", "/licenses/"]
+
 ENTRYPOINT ["/elasticsearch-adapter", "--logtostderr=true"]

@@ -28,6 +28,10 @@ test-kind:
 	kubectl apply -f deploy/elasticsearch-adapter.yaml
 	kubectl rollout restart -n custom-metrics deployment/custom-metrics-apiserver
 
+generate-notice-file:
+	go install go.elastic.co/go-licence-detector@v0.3.0
+	go list -mod=mod -m -json all | go-licence-detector -noticeOut=NOTICE.txt -noticeTemplate=hack/notice/NOTICE.txt.tmpl -includeIndirect -overrides=hack/notice/overrides.json
+
 generated/openapi/zz_generated.openapi.go: go.mod go.sum
 	go run vendor/k8s.io/kube-openapi/cmd/openapi-gen/openapi-gen.go --logtostderr \
 	    -i k8s.io/metrics/pkg/apis/custom_metrics,k8s.io/metrics/pkg/apis/custom_metrics/v1beta1,k8s.io/metrics/pkg/apis/custom_metrics/v1beta2,k8s.io/metrics/pkg/apis/external_metrics,k8s.io/metrics/pkg/apis/external_metrics/v1beta1,k8s.io/apimachinery/pkg/apis/meta/v1,k8s.io/apimachinery/pkg/api/resource,k8s.io/apimachinery/pkg/version,k8s.io/api/core/v1 \
@@ -37,7 +41,7 @@ generated/openapi/zz_generated.openapi.go: go.mod go.sum
 	    -o ./ \
 	    -r /dev/null
 
-docker-build: generated/openapi/zz_generated.openapi.go
+docker-build: generated/openapi/zz_generated.openapi.go generate-notice-file
 	docker build . \
 			--progress=plain \
 			--build-arg VERSION='$(VERSION)' \
