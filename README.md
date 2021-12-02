@@ -78,7 +78,7 @@ The `body` field must contain a valid Elasticsearch query. `metricPath` and `tim
 
 ### Forwarding metrics request to existing metrics adapters
 
-You may want to also server some metrics from an existing third party metric server like Prometheus or Stackdriver. This can be done by adding the third party adapter API endpoint to the `metricServers` list:
+You may want to also serve some metrics from an existing third party metric server like Prometheus or Stackdriver. This can be done by adding the third party adapter API endpoint to the `metricServers` list:
 
 ```yaml
 ## Metric server of type "custom" can be used to reference an existing or third party metric adapter service.
