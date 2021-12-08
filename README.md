@@ -6,9 +6,13 @@ The Elasticsearch adapter for the K8S metrics APIs is an implementation of the K
 
 It can be used to automatically scale applications, using the [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale) querying metrics collected by [Metricbeat](https://www.elastic.co/beats/metricbeat) or [Agent](https://www.elastic.co/elastic-agent), and stored in [Elasticsearch](https://www.elastic.co/elasticsearch/).
 
-## Deployment
+## Use of the adapter
+This adapter is currently considered as experimental, and is thus not yet fully supported in production by Elastic.
+We'd love to get your feedback for any issues or contributions, in the form of issues in this repository.
 
-Refer to [deploy/README.md](deploy/README.md) to configure and deploy the metrics adapter.
+## Getting started
+
+Refer to [deploy/README.md](deploy/README.md) to configure and deploy the metrics adapter to your Kubernetes cluster.
 
 ## Configuration
 
