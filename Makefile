@@ -16,7 +16,7 @@
 # under the License.
 
 VERSION ?= $(shell cat VERSION)
-REGISTRY?=gcr.io/elastic-cloud-dev/$(USER)
+REGISTRY?=docker.elasti.co/elasticsearch-k8s-metrics-adapter
 IMAGE?=elasticsearch-metrics-adapter
 TEMP_DIR:=$(shell mktemp -d)
 ARCH?=amd64

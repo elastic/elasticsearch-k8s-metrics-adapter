@@ -36,7 +36,7 @@ for file in ${files}; do
     if [[ "${md5}" != "5dd3abfa483f04ffc7b91241604b8cfe" && # *.go
           "${md5}" != "d072f309292b73b02a4a2bf0eb33a5e7" && # Makefiles
           "${md5}" != "45bb875410d1a7864db96c6367c3ad48" && # Shell scripts
-          "${md5}" !=  "60d9ab7ece64d01a602eedf330400ec0" ]]; then # zz_generated.openapi.go
+          "${md5}" !=  "256cd857f87cbb7d26ea314e971a3ad9" ]]; then # zz_generated.openapi.go
         echo "${file} does not have an expected license header: ${md5}"
         rc=1
     fi
