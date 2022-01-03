@@ -1,0 +1,4 @@
+{"name": "github.com/chzyer/logex", "licenceType": "MIT"}
+{"name": "github.com/kr/logfmt", "licenceFile": "Readme", "licenceType": "MIT"}
+{"name": "github.com/miekg/dns", "licenceTextOverrideFile": "licences/github.com/miekg/dns/LICENSE"}
+{"name": "github.com/pascaldekloe/goe", "licenceTextOverrideFile": "licences/github.com/pascaldekloe/goe/LICENSE"}
