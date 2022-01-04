@@ -16,7 +16,7 @@
 # under the License.
 
 VERSION ?= $(shell cat VERSION)
-REGISTRY?=gcr.io/elastic-cloud-dev/$(USER)
+REGISTRY?=docker.elasti.co/elasticsearch-k8s-metrics-adapter
 IMAGE?=elasticsearch-metrics-adapter
 TEMP_DIR:=$(shell mktemp -d)
 ARCH?=amd64
@@ -50,7 +50,7 @@ check-license-header:
 
 generate-notice-file:
 	go install go.elastic.co/go-licence-detector@v0.3.0
-	go list -mod=mod -m -json all | go-licence-detector -noticeOut=NOTICE.txt -noticeTemplate=hack/notice/NOTICE.txt.tmpl -includeIndirect -overrides=hack/notice/overrides.json
+	go list -mod=mod -m -json all | go-licence-detector -noticeOut=NOTICE.txt -noticeTemplate=hack/notice/NOTICE.txt.tmpl -includeIndirect -overrides=hack/notice/overrides/overrides.json -rules=hack/notice/rules.json
 
 generated/openapi/zz_generated.openapi.go: go.mod go.sum
 	go run vendor/k8s.io/kube-openapi/cmd/openapi-gen/openapi-gen.go --logtostderr \
