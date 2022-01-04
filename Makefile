@@ -16,7 +16,8 @@
 # under the License.
 
 VERSION ?= $(shell cat VERSION)
-REGISTRY?=docker.elasti.co/elasticsearch-k8s-metrics-adapter
+REGISTRY?=docker.elastic.co
+NAMESPACE?=elasticsearch-k8s-metrics-adapter
 IMAGE?=elasticsearch-metrics-adapter
 TEMP_DIR:=$(shell mktemp -d)
 ARCH?=amd64
@@ -41,7 +42,7 @@ test:
 	CGO_ENABLED=0 go test ./pkg/...
 
 test-kind:
-	kind load docker-image $(REGISTRY)/$(IMAGE)-$(ARCH):$(VERSION)
+	kind load docker-image $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
 	kubectl apply -f deploy/elasticsearch-adapter.yaml
 	kubectl rollout restart -n custom-metrics deployment/custom-metrics-apiserver
 
@@ -65,5 +66,5 @@ docker-build: generated/openapi/zz_generated.openapi.go generate-notice-file che
 	docker build . \
 			--progress=plain \
 			--build-arg VERSION='$(VERSION)' \
-			-t $(REGISTRY)/$(IMAGE)-$(ARCH):$(VERSION)
+			-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
 
