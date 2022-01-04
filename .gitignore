@@ -1,0 +1,9 @@
+*.swp
+*~
+_output
+.idea/
+*.iml
+elasticsearch-adapter
+apiserver.local.config
+config/config.yml
+config/config.yaml

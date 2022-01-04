@@ -1,0 +1,207 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: elasticsearch-metrics-apiserver:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: elasticsearch-metrics-apiserver
+    namespace: elastic-custom-metrics
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: elasticsearch-metrics-apiserver-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: elasticsearch-metrics-apiserver
+    namespace: elastic-custom-metrics
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: elasticsearch-metrics-apiserver
+  name: elasticsearch-metrics-apiserver
+  namespace: elastic-custom-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch-metrics-apiserver
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-metrics-apiserver
+      name: elasticsearch-metrics-apiserver
+    spec:
+      serviceAccountName: elasticsearch-metrics-apiserver
+      containers:
+        - name: elasticsearch-metrics-apiserver
+          image: docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter-amd64
+          env:
+            - name: ELASTICSEARCH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch
+                  key: user
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch
+                  key: password
+            - name: ELASTICSEARCH_URL
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch
+                  key: url
+          args:
+            - /adapter
+            - --secure-port=6443
+            - --logtostderr=true
+            - --v=1
+          ports:
+            - containerPort: 6443
+              name: https
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: monitoring
+          readinessProbe:
+            httpGet:
+              port: monitoring
+              path: /readyz
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+            - name: temp-vol
+              mountPath: /tmp
+      volumes:
+        - name: config-volume
+          configMap:
+            name: elasticsearch-custom-metrics-config
+        - name: temp-vol
+          emptyDir: {}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: elasticsearch-metrics-apiserver-resource-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: elasticsearch-metrics-apiserver-resource-reader
+subjects:
+  - kind: ServiceAccount
+    name: elasticsearch-metrics-apiserver
+    namespace: elastic-custom-metrics
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: elasticsearch-metrics-apiserver
+  namespace: elastic-custom-metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-metrics-apiserver
+  namespace: elastic-custom-metrics
+spec:
+  ports:
+    - name: https
+      port: 443
+      targetPort: 6443
+    - name: http
+      port: 80
+      targetPort: 8080
+  selector:
+    app: elasticsearch-metrics-apiserver
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.custom.metrics.k8s.io
+spec:
+  service:
+    name: elasticsearch-metrics-apiserver
+    namespace: elastic-custom-metrics
+  group: custom.metrics.k8s.io
+  version: v1beta1
+  insecureSkipTLSVerify: true
+  groupPriorityMinimum: 100
+  versionPriority: 100
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta2.custom.metrics.k8s.io
+spec:
+  service:
+    name: elasticsearch-metrics-apiserver
+    namespace: elastic-custom-metrics
+  group: custom.metrics.k8s.io
+  version: v1beta2
+  insecureSkipTLSVerify: true
+  groupPriorityMinimum: 100
+  versionPriority: 200
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: elasticsearch-metrics-apiserver-resources
+rules:
+  - apiGroups:
+      - custom.metrics.k8s.io
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: elasticsearch-metrics-apiserver-resource-reader
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - pods
+      - services
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hpa-controller-elasticsearch-metrics-apiserver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: elasticsearch-metrics-apiserver-resources
+subjects:
+  - kind: ServiceAccount
+    name: horizontal-pod-autoscaler
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: elasticsearch-metrics-apiserver-proxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: elasticsearch-metrics-apiserver-resources
+subjects:
+  - kind: ServiceAccount
+    name: elasticsearch-metrics-apiserver
+    namespace: elastic-custom-metrics
