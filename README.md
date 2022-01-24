@@ -98,7 +98,7 @@ metricServers:
 ## Example
 
 The example below assumes that:
-1. You have deployed a version of [Elastic Cloud on Kubernetes](https://www.elastic.co/guide/en/cloud-on-k8s/current/index.html) which implements the `/scale` endpoint on Kibana, as the one  available [here](https://github.com/elastic/cloud-on-k8s/compare/master...barkbay:autoscaling/kibana-poc).
+1. Your Kubernetes cluster is running [Elastic Cloud on Kubernetes](https://www.elastic.co/guide/en/cloud-on-k8s/current/index.html) 1.7.0 (or later) which implements the `/scale` endpoint on Kibana.
 1. A `Kibana` resource named `kibana-example` is deployed.
 2. Kibana metrics are collected using the Metricbeat [Kibana module](https://www.elastic.co/guide/en/beats/metricbeat/current/metricbeat-module-kibana.html) and stored in an Elasticsearch cluster.
 
