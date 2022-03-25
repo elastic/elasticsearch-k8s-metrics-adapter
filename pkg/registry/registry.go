@@ -172,6 +172,7 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	var metricClients *metricClients
 	var ok bool
 	if metricClients, ok = r.customMetrics[info]; !ok {
+		klog.V(1).Infof("custom metric %v is not served by any metric client", info.Metric)
 		return nil, &errors.StatusError{
 			ErrStatus: metav1.Status{
 				Status:  metav1.StatusFailure,
@@ -182,7 +183,8 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	}
 	metricClient, err := metricClients.getBestMetricClient()
 	if err != nil {
-		return nil, fmt.Errorf("not backend for metric: %v", info.Metric)
+		klog.V(1).Infof("no backend for custom metric: %v", info.Metric)
+		return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
 	}
 	klog.V(1).Infof(
 		"custom metric %v served by %s / %s", info,

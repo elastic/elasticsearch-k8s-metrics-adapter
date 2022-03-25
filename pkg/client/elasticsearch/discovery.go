@@ -175,7 +175,7 @@ type recorder struct {
 func (r *recorder) _processMappingDocument(root string, d map[string]interface{}, fieldsSet config.FieldsSet, indices []string) {
 	for k, t := range d {
 		if k == "*" {
-			return
+			continue
 		}
 		if k == "properties" {
 			tm, ok := t.(map[string]interface{})
