@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
-	esv7 "github.com/elastic/go-elasticsearch/v7"
-	"github.com/elastic/go-elasticsearch/v7/esapi"
+	esv8 "github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/esapi"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,7 +64,7 @@ func queryFor(params QueryParams) string {
 
 func getMetricForPod(
 	ctx *context.Context,
-	esClient *esv7.Client,
+	esClient *esv8.Client,
 	metadata MetricMetadata,
 	name types.NamespacedName,
 	info provider.CustomMetricInfo,
@@ -193,7 +193,7 @@ func getMetricForPod(
 	}, nil
 }
 
-func search(ctx *context.Context, esClient *esv7.Client, metadata MetricMetadata, query string) (*esapi.Response, error) {
+func search(ctx *context.Context, esClient *esv8.Client, metadata MetricMetadata, query string) (*esapi.Response, error) {
 	defer tracing.Span(ctx)()
 	return esClient.Search(
 		esClient.Search.WithContext(*ctx),

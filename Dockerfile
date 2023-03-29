@@ -1,4 +1,4 @@
-FROM golang:1.17.5 as builder
+FROM golang:1.20.2 as builder
 
 WORKDIR /go/src/github.com/elastic/elasticsearch-adapter
 
@@ -10,7 +10,7 @@ COPY main.go    main.go
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o elasticsearch-adapter github.com/elastic/elasticsearch-adapter
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.5
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.7
 
 ARG VERSION
 

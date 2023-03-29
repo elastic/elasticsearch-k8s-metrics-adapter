@@ -30,7 +30,7 @@ import (
 	"github.com/elastic/elasticsearch-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
-	esv7 "github.com/elastic/go-elasticsearch/v7"
+	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"go.elastic.co/apm"
 	"go.elastic.co/apm/module/apmelasticsearch"
 	apierr "k8s.io/apimachinery/pkg/api/errors"
@@ -80,7 +80,7 @@ const (
 
 // MetricsClient is a wrapper around the Elasticsearch client to implement to metrics interface.
 type MetricsClient struct {
-	*esv7.Client
+	*esv8.Client
 	metricServerCfg config.MetricServer
 	lock            sync.RWMutex
 
@@ -117,7 +117,7 @@ func NewElasticsearchClient(
 		TLSClientConfig: tlsConfig,
 	}
 
-	cfg := esv7.Config{
+	cfg := esv8.Config{
 		Addresses: []string{os.ExpandEnv(metricServerCfg.ClientConfig.Host)},
 		Transport: apmelasticsearch.WrapRoundTripper(transport),
 	}
@@ -127,7 +127,7 @@ func NewElasticsearchClient(
 		cfg.Password = os.ExpandEnv(metricServerCfg.ClientConfig.AuthenticationConfig.Password)
 	}
 
-	esClient, err := esv7.NewClient(cfg)
+	esClient, err := esv8.NewClient(cfg)
 	if err != nil {
 		return nil, err
 	}

@@ -24,8 +24,8 @@ import (
 	"text/template"
 
 	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	esv7 "github.com/elastic/go-elasticsearch/v7"
-	"github.com/elastic/go-elasticsearch/v7/esapi"
+	esv8 "github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/itchyny/gojq"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
@@ -112,7 +112,7 @@ func (mc *MetricsClient) discoverMetrics() error {
 	return nil
 }
 
-func getMappingFor(metricSet config.MetricSet, esClient *esv7.Client, recorder *recorder) error {
+func getMappingFor(metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder) error {
 	req := esapi.IndicesGetMappingRequest{Index: metricSet.Indices}
 	res, err := req.Do(context.Background(), esClient)
 	if err != nil {
