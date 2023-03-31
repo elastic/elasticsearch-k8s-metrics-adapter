@@ -32,4 +32,4 @@ COPY --from=builder /go/src/github.com/elastic/elasticsearch-adapter/elasticsear
 # Copy NOTICE.txt and LICENSE.txt into the image
 COPY ["NOTICE.txt", "LICENSE.txt", "/licenses/"]
 
-ENTRYPOINT ["/elasticsearch-adapter", "--logtostderr=true"]
+ENTRYPOINT ["/elasticsearch-adapter"]
