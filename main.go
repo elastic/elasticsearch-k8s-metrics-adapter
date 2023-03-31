@@ -135,7 +135,7 @@ func main() {
 	cmd.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(apiserver.Scheme))
 	cmd.OpenAPIConfig.Info.Title = "elasticsearch-adapter"
 	cmd.OpenAPIConfig.Info.Version = "0.1.0"
-
+	logs.AddFlags(cmd.Flags())
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
 	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
 	cmd.Flags().BoolVar(&cmd.PrometheusMetricsEnabled, "enable-metrics", false, "enable Prometheus metrics endpoint /metrics on the monitoring port")
