@@ -26,7 +26,7 @@ OPENAPI_PATH=./vendor/k8s.io/kube-openapi
 
 VERSION?=latest
 
-.PHONY: all docker-build build-elasticsearch-adapter test test-adapter-container
+.PHONY: all docker-build build-elasticsearch-adapter test test-adapter-container go-run
 
 all: build-elasticsearch-adapter check-license-header
 build-elasticsearch-adapter: check-license-header vendor generated/openapi/zz_generated.openapi.go
@@ -68,3 +68,11 @@ docker-build: generated/openapi/zz_generated.openapi.go generate-notice-file che
 			--build-arg VERSION='$(VERSION)' \
 			-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
 
+go-run: ## Run the adapter program locally for development purposes.
+	go run main.go \
+		--lister-kubeconfig ${HOME}/.kube/config \
+		--authentication-kubeconfig ${HOME}/.kube/config \
+		--authorization-kubeconfig ${HOME}/.kube/config \
+		--secure-port=6443 \
+		--v=2 \
+		--insecure ## Allow unauthenticated calls
