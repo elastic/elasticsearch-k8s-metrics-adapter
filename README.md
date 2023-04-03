@@ -147,6 +147,114 @@ kibana-hpa-example   Kibana/kibana-example   13/42          1         3         
 
 ## Troubleshooting
 
+### Calling the Custom Metrics API (like the Kubernetes control plane would)
+
+You can call the Custom Metrics API from your local workstation to check what metrics are exposed and their current values.
+
+In a first terminal start the `kubectl proxy` command:
+
+```bash
+% kubectl proxy
+Starting to serve on 127.0.0.1:8001
+
+```
+
+From another terminal (or from your favorite API client) you can now run the following commands.
+
+#### Listing all available metrics
+
+```bash
+% curl http://127.0.0.1:8001/apis/custom.metrics.k8s.io/v1beta2/
+```
+
+```json
+{
+  "kind": "APIResourceList",
+  "apiVersion": "v1",
+  "groupVersion": "custom.metrics.k8s.io/v1beta2",
+  "resources": [
+    {
+      "name": "pods/system.memory.hugepages.total",
+      "singularName": "",
+      "namespaced": true,
+      "kind": "MetricValueList",
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "name": "pods/aws.rds.storage_used.backup_retention_period.bytes",
+      "singularName": "",
+      "namespaced": true,
+      "kind": "MetricValueList",
+      "verbs": [
+        "get"
+      ]
+    },
+    {
+      "name": "pods/postgresql.bgwriter.buffers.clean",
+      "singularName": "",
+      "namespaced": true,
+      "kind": "MetricValueList",
+      "verbs": [
+        "get"
+      ]
+    },
+[...]
+```
+
+#### Request a specific metric using a label selector
+
+Metrics are requested by the Kubernetes control plane using 3 parameters:
+1. The **name of the metric**.
+2. The **namespace** in which the `Pods` are running.
+3. A **label selector** to retrieve the list of Pods.
+
+You can run the following command to get the value of the metric `kibana.stats.concurrent_connections` for all the `Pods` that match the label selector `common.k8s.elastic.co/type=kibana,kibana.k8s.elastic.co/name=kb` in namespace `my-ns`:
+
+```bash
+% curl 'http://127.0.0.1:8001/apis/custom.metrics.k8s.io/v1beta2/namespaces/my-ns/pods/*/kibana.stats.concurrent_connections?labelSelector=common.k8s.elastic.co%2Ftype%3Dkibana%2Ckibana.k8s.elastic.co%2Fname%3Dkb'
+```
+
+```json
+{
+  "kind": "MetricValueList",
+  "apiVersion": "custom.metrics.k8s.io/v1beta2",
+  "metadata": {},
+  "items": [
+    {
+      "describedObject": {
+        "kind": "Pod",
+        "namespace": "my-ns",
+        "name": "kb-background-tasks-kb-dcfff65c9-qxbw2",
+        "apiVersion": "/v1"
+      },
+      "metric": {
+        "name": "kibana.stats.concurrent_connections",
+        "selector": null
+      },
+      "timestamp": "2023-04-03T09:20:48Z",
+      "value": "10"
+    },
+    {
+      "describedObject": {
+        "kind": "Pod",
+        "namespace": "my-ns",
+        "name": "kb-ui-kb-77764d6f59-75hqz",
+        "apiVersion": "/v1"
+      },
+      "metric": {
+        "name": "kibana.stats.concurrent_connections",
+        "selector": null
+      },
+      "timestamp": "2023-04-03T09:20:46Z",
+      "value": "10"
+    }
+  ]
+}
+```
+
+
 ### HorizontalPodAutoscaler events
 
 The `describe` API on the `HorizontalPodAutoscaler` is a good starting point to understand the behaviour or the root cause of an issue with the adapter.
