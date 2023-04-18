@@ -1,0 +1,38 @@
+image:
+  repository: docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter-amd64
+  tag: "latest"
+
+resources:
+  limits:
+    cpu: "1"
+    memory: 1Gi
+  requests:
+    cpu: "1"
+    memory: 1Gi
+
+runAsUser: "1111"
+
+logVerbosity: "1"
+
+env: []
+
+envFrom:
+  - secretRef:
+      name: hpa-elasticsearch-credentials
+
+## config holds the metrics adapter configuration.
+config:
+  metricServers:
+    - name: k8s-observability-cluster
+      serverType: elasticsearch
+      clientConfig:
+        host: ${HPA_ELASTICSEARCH_HOST}
+        authentication:
+          username: ${HPA_ELASTICSEARCH_USERNAME}
+          password: ${HPA_ELASTICSEARCH_PASSWORD}
+        tls:
+          insecureSkipTLSVerify: true
+      metricSets:
+        - indices: [ 'metrics-*' ]
+        - indices: [ 'metricbeat-*' ]
+

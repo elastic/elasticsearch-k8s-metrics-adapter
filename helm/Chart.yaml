@@ -1,0 +1,6 @@
+apiVersion: v2
+name: elasticsearch-k8s-metrics-adapter
+description: An implementation of the Kubernetes Custom Metrics API for Elasticsearch.
+type: application
+version: 0.1.0
+appVersion: "git"
