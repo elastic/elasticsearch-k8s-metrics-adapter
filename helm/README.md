@@ -2,7 +2,7 @@
 
 ## Requirements
 
-The following document assumes that an Elasticsearch cluster is already deployed, with Agent or Beats collecting and shipping metrics, and you want these metrics to be available through the Kubernetes custom metrics API.
+The following document assumes that an Elasticsearch cluster is already deployed, with Agent or Beats collecting and shipping metrics, and you want these metrics to be available through the Kubernetes custom metrics API. We also assume that you have installed `helm` to generate the Kubernetes manifests.
 
 ## Create a Secret containing the Elasticsearch credentials
 

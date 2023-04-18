@@ -1,0 +1,4 @@
+1. List the adapter Pods by running the following command:
+   kubectl get pods -n {{ .Release.Namespace }} -l app=elasticsearch-metrics-apiserver
+2. Inspect the adapter logs by running the following command:
+   kubectl logs -n {{ .Release.Namespace }} -l app=elasticsearch-metrics-apiserver
