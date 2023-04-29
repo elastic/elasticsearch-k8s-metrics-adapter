@@ -13,6 +13,13 @@ spec:
     metadata:
       labels:
         app: elasticsearch-metrics-apiserver
+        {{- with .Values.podLabels }}
+        {{- toYaml . | trim | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       name: elasticsearch-metrics-apiserver
     spec:
       serviceAccountName: elasticsearch-metrics-apiserver

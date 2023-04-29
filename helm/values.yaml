@@ -1,3 +1,9 @@
+# Labels added to the pod
+podLabels: {}
+
+# Annotations added to the pod
+podAnnotations: {}
+
 image:
   repository: docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter-amd64
   tag: "latest"
