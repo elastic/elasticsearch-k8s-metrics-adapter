@@ -20,6 +20,9 @@ keywords:
   - Agent
   - Autoscaling
   - Observability
+  - hpa
+  - metrics
+  - adapter
 
 maintainers:
   - name: Elastic
