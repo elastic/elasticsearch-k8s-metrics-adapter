@@ -5,7 +5,7 @@ metadata:
     app: elasticsearch-metrics-apiserver
   name: elasticsearch-metrics-apiserver
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       app: elasticsearch-metrics-apiserver
