@@ -1,0 +1,29 @@
+apiVersion: v2
+
+name: elasticsearch-k8s-metrics-adapter
+
+description: An implementation of the Kubernetes Custom Metrics API for Elasticsearch.
+
+home: https://github.com/elastic/elasticsearch-k8s-metrics-adapter
+
+type: application
+
+version: 0.1.0
+
+kubeVersion: ">=1.21.0-0"
+
+appVersion: "git"
+
+keywords:
+  - Elasticsearch
+  - Beats
+  - Agent
+  - Autoscaling
+  - Observability
+  - hpa
+  - metrics
+  - adapter
+
+maintainers:
+  - name: Elastic
+    email: eck@elastic.co

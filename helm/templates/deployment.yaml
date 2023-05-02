@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: elasticsearch-metrics-apiserver
+  name: elasticsearch-metrics-apiserver
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: elasticsearch-metrics-apiserver
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-metrics-apiserver
+        {{- with .Values.podLabels }}
+        {{- toYaml . | trim | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      name: elasticsearch-metrics-apiserver
+    spec:
+      serviceAccountName: elasticsearch-metrics-apiserver
+      containers:
+        - name: elasticsearch-metrics-apiserver
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.runAsUser }}
+          envFrom:
+            {{- with .Values.envFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            {{- with .Values.env }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          args: [
+            "--secure-port", "6443",
+            "--cert-dir=/var/run/serving-cert",
+            "--v", "{{ .Values.logVerbosity }}",
+          ]
+          resources:
+            limits:
+              cpu: "{{ .Values.resources.limits.cpu }}"
+              memory: "{{ .Values.resources.limits.memory }}"
+            requests:
+              cpu:  "{{ .Values.resources.requests.cpu }}"
+              memory: "{{ .Values.resources.requests.memory }}"
+          ports:
+            - containerPort: 6443
+              name: https
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: monitoring
+          readinessProbe:
+            httpGet:
+              port: monitoring
+              path: /readyz
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+            - name: temp-vol
+              mountPath: /tmp
+            - mountPath: /var/run/serving-cert
+              name: volume-serving-cert
+              readOnly: false
+      volumes:
+        - name: config-volume
+          configMap:
+            name: elasticsearch-custom-metrics-config-{{ include "yamlHash" .Values.config  }}
+        - name: temp-vol
+          emptyDir: {}
+        - name: volume-serving-cert
+          emptyDir: { }

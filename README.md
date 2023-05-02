@@ -12,7 +12,7 @@ We'd love to get your feedback for any issues or contributions, in the form of i
 
 ## Getting started
 
-Refer to [deploy/README.md](deploy/README.md) to configure and deploy the metrics adapter to your Kubernetes cluster.
+Refer to [helm/README.md](helm/README.md) to configure and deploy the metrics adapter to your Kubernetes cluster.
 
 ## Configuration
 
