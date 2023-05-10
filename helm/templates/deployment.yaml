@@ -25,7 +25,7 @@ spec:
       serviceAccountName: elasticsearch-metrics-apiserver
       containers:
         - name: elasticsearch-metrics-apiserver
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion}}"
           securityContext:
             runAsNonRoot: true
             runAsUser: {{ .Values.runAsUser }}
