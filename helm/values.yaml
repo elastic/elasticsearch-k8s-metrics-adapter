@@ -6,7 +6,6 @@ podAnnotations: {}
 
 image:
   repository: docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter-amd64
-  tag: "latest"
 
 # replicaCount is the number of operator pods to run.
 replicaCount: 1
