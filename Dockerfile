@@ -1,8 +1,5 @@
 FROM --platform=$TARGETPLATFORM docker.io/library/golang:1.20.4 as builder
 
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
-
 WORKDIR /go/src/github.com/elastic/elasticsearch-adapter
 
 COPY ["go.mod", "go.sum", "./"]
