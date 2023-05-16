@@ -20,7 +20,6 @@ REGISTRY?=docker.elastic.co
 NAMESPACE?=elasticsearch-k8s-metrics-adapter
 IMAGE?=elasticsearch-metrics-adapter
 TEMP_DIR:=$(shell mktemp -d)
-ARCH?=amd64
 
 OPENAPI_PATH=./vendor/k8s.io/kube-openapi
 
@@ -62,11 +61,11 @@ generated/openapi/zz_generated.openapi.go: go.mod go.sum
 	    -o ./ \
 	    -r /dev/null
 
+PLATFORMS ?= linux/arm64,linux/amd64
 docker-build: generated/openapi/zz_generated.openapi.go generate-notice-file check-license-header
-	docker build . \
-			--progress=plain \
-			--build-arg VERSION='$(VERSION)' \
-			-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
+	docker buildx build --platform=$(PLATFORMS)   \
+					-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE):$(VERSION) \
+					--push .
 
 go-run: ## Run the adapter program locally for development purposes.
 	go run main.go \
