@@ -26,6 +26,7 @@ spec:
       containers:
         - name: elasticsearch-metrics-apiserver
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          workingDir: /
           securityContext:
             runAsNonRoot: true
             runAsUser: {{ .Values.runAsUser }}
@@ -68,6 +69,10 @@ spec:
             - mountPath: /var/run/serving-cert
               name: volume-serving-cert
               readOnly: false
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 12 }}
+      {{- end }}
       volumes:
         - name: config-volume
           configMap:
