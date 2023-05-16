@@ -51,3 +51,6 @@ podDisruptionBudget:
   enabled: false
   minAvailable:
   maxUnavailable: 1
+
+# tolerations defines the node tolerations.
+tolerations: []
