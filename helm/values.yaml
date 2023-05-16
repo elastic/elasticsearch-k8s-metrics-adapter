@@ -5,7 +5,7 @@ podLabels: {}
 podAnnotations: {}
 
 image:
-  repository: docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter-amd64
+  repository: docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter
   tag: "latest"
 
 # replicaCount is the number of operator pods to run.
@@ -51,3 +51,6 @@ podDisruptionBudget:
   enabled: false
   minAvailable:
   maxUnavailable: 1
+
+# tolerations defines the node tolerations.
+tolerations: []
