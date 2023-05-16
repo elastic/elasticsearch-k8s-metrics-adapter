@@ -76,3 +76,13 @@ go-run: ## Run the adapter program locally for development purposes.
 		--secure-port=6443 \
 		--v=2 \
 		--insecure ## Allow unauthenticated calls
+
+BUILD_PLATFORM ?= "linux/amd64,linux/arm64"
+
+docker-multiarch-build: generated/openapi/zz_generated.openapi.go generate-notice-file check-license-header
+	docker buildx build . \
+		--progress=plain \
+		--build-arg VERSION='$(VERSION)' \
+		--platform $(BUILD_PLATFORM) \
+		-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE):$(VERSION) \
+		--push
