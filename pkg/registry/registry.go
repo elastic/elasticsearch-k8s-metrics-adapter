@@ -22,12 +22,13 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
-	"github.com/elastic/elasticsearch-adapter/pkg/scheduler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
 )
 
 // Registry maintains a list of the available metrics and the associated metrics sources.

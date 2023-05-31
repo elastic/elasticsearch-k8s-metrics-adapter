@@ -21,7 +21,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/registry"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
 	"go.elastic.co/apm"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"

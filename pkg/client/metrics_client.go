@@ -18,12 +18,13 @@
 package client
 
 import (
-	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
 	"k8s.io/metrics/pkg/apis/external_metrics"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
 type Interface interface {

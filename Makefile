@@ -26,11 +26,11 @@ OPENAPI_PATH=./vendor/k8s.io/kube-openapi
 
 VERSION?=latest
 
-.PHONY: all docker-build build-elasticsearch-adapter test test-adapter-container go-run
+.PHONY: all docker-build build-elasticsearch-k8s-metrics-adapter test test-adapter-container go-run
 
-all: build-elasticsearch-adapter check-license-header
-build-elasticsearch-adapter: check-license-header vendor generated/openapi/zz_generated.openapi.go
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -o elasticsearch-adapter github.com/elastic/elasticsearch-adapter
+all: build-elasticsearch-k8s-metrics-adapter check-license-header
+build-elasticsearch-k8s-metrics-adapter: check-license-header vendor generated/openapi/zz_generated.openapi.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -o elasticsearch-k8s-metrics-adapter github.com/elastic/elasticsearch-k8s-metrics-adapter
 
 vendor: tidy
 	go mod vendor
@@ -43,7 +43,7 @@ test:
 
 test-kind:
 	kind load docker-image $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
-	kubectl apply -f deploy/elasticsearch-adapter.yaml
+	kubectl apply -f deploy/elasticsearch-k8s-metrics-adapter.yaml
 	kubectl rollout restart -n custom-metrics deployment/custom-metrics-apiserver
 
 check-license-header:

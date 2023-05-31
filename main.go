@@ -21,15 +21,15 @@ import (
 	"flag"
 	"os"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
-	"github.com/elastic/elasticsearch-adapter/pkg/client/custom_api"
-	"github.com/elastic/elasticsearch-adapter/pkg/client/elasticsearch"
-	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/elastic/elasticsearch-adapter/pkg/monitoring"
-	"github.com/elastic/elasticsearch-adapter/pkg/provider"
-	"github.com/elastic/elasticsearch-adapter/pkg/registry"
-	"github.com/elastic/elasticsearch-adapter/pkg/scheduler"
-	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/custom_api"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/elasticsearch"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/monitoring"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/provider"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/tracing"
 	"go.elastic.co/apm"
 	"k8s.io/client-go/kubernetes"
 
@@ -40,7 +40,7 @@ import (
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
 
-	generatedopenapi "github.com/elastic/elasticsearch-adapter/generated/openapi"
+	generatedopenapi "github.com/elastic/elasticsearch-k8s-metrics-adapter/generated/openapi"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver"
@@ -133,7 +133,7 @@ func main() {
 	cmd := &ElasticsearchAdapter{}
 
 	cmd.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(apiserver.Scheme))
-	cmd.OpenAPIConfig.Info.Title = "elasticsearch-adapter"
+	cmd.OpenAPIConfig.Info.Title = "elasticsearch-k8s-metrics-adapter"
 	cmd.OpenAPIConfig.Info.Version = "0.1.0"
 	logs.AddFlags(cmd.Flags())
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")

@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 )
 
 type metricClients []client.Interface

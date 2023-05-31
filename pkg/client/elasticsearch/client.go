@@ -27,9 +27,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
-	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"go.elastic.co/apm"
 	"go.elastic.co/apm/module/apmelasticsearch"
@@ -44,6 +41,10 @@ import (
 	"k8s.io/metrics/pkg/apis/external_metrics"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider/helpers"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/tracing"
 )
 
 const (

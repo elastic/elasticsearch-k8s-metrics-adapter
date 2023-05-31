@@ -3,7 +3,7 @@
 _output
 .idea/
 *.iml
-elasticsearch-adapter
+elasticsearch-k8s-metrics-adapter
 apiserver.local.config
 config/config.yml
 config/config.yaml
