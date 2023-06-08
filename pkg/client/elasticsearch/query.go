@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -213,7 +212,7 @@ func getFloat(v interface{}) (float64, error) {
 	case int64:
 		return float64(i), nil
 	default:
-		return math.NaN(), errors.New("getFloat: value is of incompatible type")
+		return math.NaN(), fmt.Errorf("getFloat: value is of incompatible type: %v", v)
 	}
 }
 
