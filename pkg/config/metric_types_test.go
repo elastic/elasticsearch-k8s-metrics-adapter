@@ -20,9 +20,10 @@ package config_test
 import (
 	"testing"
 
-	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
 func TestMetricTypes_UnmarshalYAML(t *testing.T) {
