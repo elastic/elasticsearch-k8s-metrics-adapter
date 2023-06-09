@@ -22,8 +22,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
-	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -42,6 +40,9 @@ import (
 	externalMetricsAPI "k8s.io/metrics/pkg/apis/external_metrics/v1beta1"
 	cmClient "k8s.io/metrics/pkg/client/custom_metrics"
 	emClient "k8s.io/metrics/pkg/client/external_metrics"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
 type metricsClientProvider struct {

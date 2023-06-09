@@ -1,4 +1,4 @@
-module github.com/elastic/elasticsearch-adapter
+module github.com/elastic/elasticsearch-k8s-metrics-adapter
 
 go 1.20
 

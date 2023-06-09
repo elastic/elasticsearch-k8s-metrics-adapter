@@ -21,10 +21,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
-	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
 type Job interface {

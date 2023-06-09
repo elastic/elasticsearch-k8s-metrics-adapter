@@ -23,13 +23,14 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/config"
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/itchyny/gojq"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
 var allowedTypes = map[string]struct{}{

@@ -21,31 +21,30 @@ import (
 	"flag"
 	"os"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
-	"github.com/elastic/elasticsearch-adapter/pkg/client/custom_api"
-	"github.com/elastic/elasticsearch-adapter/pkg/client/elasticsearch"
-	"github.com/elastic/elasticsearch-adapter/pkg/config"
-	"github.com/elastic/elasticsearch-adapter/pkg/monitoring"
-	"github.com/elastic/elasticsearch-adapter/pkg/provider"
-	"github.com/elastic/elasticsearch-adapter/pkg/registry"
-	"github.com/elastic/elasticsearch-adapter/pkg/scheduler"
-	"github.com/elastic/elasticsearch-adapter/pkg/tracing"
-	"go.elastic.co/apm"
-	"k8s.io/client-go/kubernetes"
-
 	// Load all auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/component-base/logs"
-	"k8s.io/klog/v2"
-
-	generatedopenapi "github.com/elastic/elasticsearch-adapter/generated/openapi"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/component-base/logs"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver"
 	basecmd "sigs.k8s.io/custom-metrics-apiserver/pkg/cmd"
 	cm_provider "sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	generatedopenapi "github.com/elastic/elasticsearch-k8s-metrics-adapter/generated/openapi"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/custom_api"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/elasticsearch"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/monitoring"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/provider"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/tracing"
+	"go.elastic.co/apm"
 )
 
 type ElasticsearchAdapter struct {
@@ -133,7 +132,7 @@ func main() {
 	cmd := &ElasticsearchAdapter{}
 
 	cmd.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(apiserver.Scheme))
-	cmd.OpenAPIConfig.Info.Title = "elasticsearch-adapter"
+	cmd.OpenAPIConfig.Info.Title = "elasticsearch-k8s-metrics-adapter"
 	cmd.OpenAPIConfig.Info.Version = "0.1.0"
 	logs.AddFlags(cmd.Flags())
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")

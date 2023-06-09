@@ -20,8 +20,9 @@ package scheduler
 import (
 	"sync"
 
-	"github.com/elastic/elasticsearch-adapter/pkg/client"
 	"k8s.io/klog/v2"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 )
 
 type Scheduler struct {
