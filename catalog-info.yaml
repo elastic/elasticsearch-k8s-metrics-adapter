@@ -22,6 +22,7 @@ spec:
       repository: elastic/elasticsearch-k8s-metrics-adapter
       pipeline_file: ".buildkite/pipeline.yml"
       teams:
-        cloud-k8s-operator: {}
+        cloud-k8s-region:
+          access_level: MANAGE_BUILD_AND_READ
         everyone:
           access_level: READ_ONLY
