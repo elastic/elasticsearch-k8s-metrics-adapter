@@ -1,2 +1,9 @@
 steps:
   - command: echo "🐙"'
+  # multiarch dockerx build
+  - group: ":docker: Build Container Images"
+    steps:
+      - label: ":docker: :seedling: Trigger Image Creation"
+        command: "make -C /agent generate-docker-images"
+        agents:
+          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.1"
