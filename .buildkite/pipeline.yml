@@ -36,3 +36,11 @@ steps:
         command: "make -C /agent generate-docker-images"
         agents:
           image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.4"
+# Slack notifications have to be manually setup by the CI team for now
+# Please open an issue similar to https://github.com/elastic/ci/issues/960,
+# which will give you generic notifications of build failures.
+# For finer control, you can customize notifications as below.
+# More details are available in the Buildkite doc: https://buildkite.com/docs/pipelines/notifications
+#notify:
+#  - slack: "#cp-serverless-applications"
+#    if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
