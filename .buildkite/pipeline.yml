@@ -26,7 +26,7 @@ steps:
     depends_on: "tests"
     
   - label: ":go: Build"
-    command: "make build"
+    command: "make all"
 
   # multiarch dockerx build
   - group: ":docker: Build Container Images"

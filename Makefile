@@ -39,7 +39,7 @@ tidy:
 	go mod tidy
 
 test:
-	CGO_ENABLED=0 go test ./pkg/...
+	CGO_ENABLED=0 go test -coverprofile=./coverage.out ./pkg/...
 
 test-kind:
 	kind load docker-image $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
