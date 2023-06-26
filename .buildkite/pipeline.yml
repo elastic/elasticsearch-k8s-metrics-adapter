@@ -36,6 +36,16 @@ steps:
         command: "make -C /agent generate-docker-images"
         agents:
           image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.4"
+  
+  - wait:
+  
+  - label: ":argo: Update image tag for elasticsearch-k8s-metrics-adapter"
+    branches: main
+    trigger: k8s-gitops-update-image-tag
+    build:
+      env:
+        SERVICE: "elasticsearch-k8s-metrics-adapter"
+        IMAGE_TAG: "${DOCKER_IMAGE_TAG}"
 # Slack notifications have to be manually setup by the CI team for now
 # Please open an issue similar to https://github.com/elastic/ci/issues/960,
 # which will give you generic notifications of build failures.
