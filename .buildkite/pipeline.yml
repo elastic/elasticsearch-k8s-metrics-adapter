@@ -36,13 +36,3 @@ steps:
         command: "make -C /agent generate-docker-images"
         agents:
           image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.4"
-  
-  - wait
-
-  - trigger: k8s-gitops-update-image-tag
-    label: ":argo: Update image tag for elasticsearch-controller"
-    branches: main
-    build:
-      env:
-        SERVICE: "elasticsearch-controller"
-        IMAGE_TAG: "${DOCKER_IMAGE_TAG}"
