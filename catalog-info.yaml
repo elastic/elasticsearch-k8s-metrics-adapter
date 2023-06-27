@@ -30,7 +30,8 @@ spec:
         publish_commit_status_per_step: false
         skip_pull_request_builds_for_existing_commits: false
       teams:
-        cloud-k8s-region:
-          access_level: MANAGE_BUILD_AND_READ
+        cloud-k8s-operator: {}
+        #cloud-k8s-region:
+        #  access_level: MANAGE_BUILD_AND_READ
         everyone:
           access_level: READ_ONLY
