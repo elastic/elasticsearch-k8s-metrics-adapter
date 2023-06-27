@@ -27,6 +27,16 @@ steps:
 
   - label: ":go: Build"
     command: "make all"
+  
+  - label: "Package Helm Charts and push into registry"
+    command: "make -C /agent helm-publish"
+    env:
+      OCI_REGISTRY_PATH: oci://${DOCKER_IMAGE}
+      CHART_APP_VERSION: "${DOCKER_IMAGE_TAG}" 
+    agents:
+      image: "docker.elastic.co/ci-agent-images/serverless-helm-builder:0.0.2"
+
+  - wait
 
   # multi-arch container image build
   - group: ":docker: Build Container Images"
