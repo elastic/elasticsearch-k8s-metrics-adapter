@@ -1,5 +1,5 @@
 agents:
-  image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.19-02"
+  image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.20"
   cpu: "4"
   memory: "4G"
 
@@ -25,11 +25,10 @@ steps:
     soft_fail: true
     depends_on: "tests"
 
-  # Need go 1.20 in the serverless-docker-builder to enable this 
-  #- label: ":go: Build"
-  #  command: "make all"
+  - label: ":go: Build"
+    command: "make all"
 
-  # multiarch dockerx build
+  # multi-arch container image build
   - group: ":docker: Build Container Images"
     steps:
       - label: ":docker: :seedling: Trigger Image Creation"
@@ -46,11 +45,7 @@ steps:
       env:
         SERVICE: "elasticsearch-k8s-metrics-adapter"
         IMAGE_TAG: "${DOCKER_IMAGE_TAG}"
-# Slack notifications have to be manually setup by the CI team for now
-# Please open an issue similar to https://github.com/elastic/ci/issues/960,
-# which will give you generic notifications of build failures.
-# For finer control, you can customize notifications as below.
-# More details are available in the Buildkite doc: https://buildkite.com/docs/pipelines/notifications
-#notify:
-#  - slack: "#cp-serverless-applications"
-#    if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
+
+notify:
+  - slack: "#cp-serverless-applications"
+    if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
