@@ -46,7 +46,7 @@ steps:
         agents:
           image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.4"
   
-  - wait:
+  - wait
   
   - label: ":argo: Update image tag for elasticsearch-k8s-metrics-adapter"
     branches: main
