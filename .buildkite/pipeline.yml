@@ -4,7 +4,7 @@ agents:
   memory: "4G"
 
 env:
-  DOCKER_IMAGE: "docker.elastic.co/cloud-ci/k8s-arch/elasticsearch-k8s-metrics-adapter"
+  DOCKER_IMAGE: "docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter"
   DOCKER_IMAGE_TAG: "git-${BUILDKITE_COMMIT:0:12}"
 
 steps:
