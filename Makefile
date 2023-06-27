@@ -86,3 +86,8 @@ docker-multiarch-build: generated/openapi/zz_generated.openapi.go generate-notic
 		--platform $(BUILD_PLATFORM) \
 		-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE):$(VERSION) \
 		--push
+
+##@ Helm
+.PHONY: validate-helm
+validate-helm:
+	helm lint helm && helm template helm

@@ -28,6 +28,10 @@ steps:
   - label: ":go: Build"
     command: "make all"
   
+  # Validate the Helm charts
+  - label: ":helm: validate helm charts"
+    command: "make validate-helm"
+  
   - label: "Package Helm Charts and push into registry"
     command: "make -C /agent helm-publish"
     env:
