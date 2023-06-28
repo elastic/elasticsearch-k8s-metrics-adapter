@@ -6,7 +6,6 @@ agents:
 env:
   DOCKER_IMAGE: "docker.elastic.co/elasticsearch-k8s-metrics-adapter/elasticsearch-metrics-adapter"
   DOCKER_IMAGE_TAG: "git-${BUILDKITE_COMMIT:0:12}"
-  DOCKER_REGISTRY_VAULT_PATH: "secret/ci/elastic-cloud-on-k8s/docker-registry-elastic"
 
 steps:
   - label: ":go: Run unit tests"
