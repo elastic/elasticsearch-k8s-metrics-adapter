@@ -73,6 +73,8 @@ spec:
       tolerations:
         {{- toYaml . | nindent 12 }}
       {{- end }}
+      imagePullSecrets:
+        - name: elastic-docker-registry
       volumes:
         - name: config-volume
           configMap:

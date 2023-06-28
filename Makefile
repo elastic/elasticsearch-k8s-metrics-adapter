@@ -39,7 +39,7 @@ tidy:
 	go mod tidy
 
 test:
-	CGO_ENABLED=0 go test ./pkg/...
+	CGO_ENABLED=0 go test -coverprofile=./coverage.out ./pkg/...
 
 test-kind:
 	kind load docker-image $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
@@ -86,3 +86,8 @@ docker-multiarch-build: generated/openapi/zz_generated.openapi.go generate-notic
 		--platform $(BUILD_PLATFORM) \
 		-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE):$(VERSION) \
 		--push
+
+##@ Helm
+.PHONY: validate-helm
+validate-helm:
+	helm lint helm && helm template helm

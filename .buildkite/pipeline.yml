@@ -1,2 +1,63 @@
+agents:
+  image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.20"
+  cpu: "4"
+  memory: "4G"
+
+env:
+  DOCKER_IMAGE: "docker.elastic.co/cloud-ci/k8s-arch/elasticsearch-k8s-metrics-adapter"
+  DOCKER_IMAGE_TAG: "git-${BUILDKITE_COMMIT:0:12}"
+
 steps:
-  - command: echo "🐙"'
+  - label: ":go: Run unit tests"
+    command: "make test"
+    key: "tests"
+    artifact_paths:
+      - "coverage.out"
+
+  - label: ":sonarqube: Static Code Analysis"
+    env:
+      VAULT_SONAR_TOKEN_PATH: "kv/ci-shared/serverless/shared-analysis-token"
+    agents:
+      image: "docker.elastic.co/cloud-ci/sonarqube/buildkite-scanner:latest"
+    command:
+      - "buildkite-agent artifact download coverage.out ."
+      - "/scan-source-code.sh"
+    soft_fail: true
+    depends_on: "tests"
+
+  - label: ":go: Build"
+    command: "make all"
+  
+  - label: ":helm: validate helm charts"
+    command: "make validate-helm"
+  
+  - label: "Package Helm Charts and push into registry"
+    command: "make -C /agent helm-publish"
+    env:
+      OCI_REGISTRY_PATH: oci://${DOCKER_IMAGE}
+      CHART_APP_VERSION: "${DOCKER_IMAGE_TAG}" 
+    agents:
+      image: "docker.elastic.co/ci-agent-images/serverless-helm-builder:0.0.2"
+
+  - wait
+
+  - group: ":docker: Build Container Images"
+    steps:
+      - label: ":docker: :seedling: Trigger Image Creation"
+        command: "make -C /agent generate-docker-images"
+        agents:
+          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.4"
+  
+  - wait
+  
+  - label: ":argo: Update image tag for elasticsearch-k8s-metrics-adapter"
+    branches: main
+    trigger: k8s-gitops-update-image-tag
+    build:
+      env:
+        SERVICE: "elasticsearch-k8s-metrics-adapter"
+        IMAGE_TAG: "${DOCKER_IMAGE_TAG}"
+
+notify:
+  - slack: "#cp-serverless-applications"
+    if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
