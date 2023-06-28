@@ -28,7 +28,6 @@ steps:
   - label: ":go: Build"
     command: "make all"
   
-  # Validate the Helm charts
   - label: ":helm: validate helm charts"
     command: "make validate-helm"
   
@@ -42,7 +41,6 @@ steps:
 
   - wait
 
-  # multi-arch container image build
   - group: ":docker: Build Container Images"
     steps:
       - label: ":docker: :seedling: Trigger Image Creation"
