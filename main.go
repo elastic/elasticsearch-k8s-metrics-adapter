@@ -54,6 +54,7 @@ type ElasticsearchAdapter struct {
 	Insecure                 bool
 	PrometheusMetricsEnabled bool
 	MonitoringPort           int
+	Tracer                   *apm.Tracer
 }
 
 func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_provider.MetricsProvider {
@@ -67,8 +68,6 @@ func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_p
 		klog.Fatalf("unable to construct dynamicClient REST mapper: %v", err)
 	}
 
-	tracer := createTracer()
-
 	var clients []client.Interface
 	for _, clientCfg := range adapterCfg.MetricServers {
 		switch clientCfg.ServerType {
@@ -77,7 +76,7 @@ func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_p
 				clientCfg,
 				dynamicClient,
 				mapper,
-				tracer,
+				a.Tracer,
 			)
 			if err != nil {
 				klog.Fatalf("unable to construct Elasticsearch dynamicClient: %v", err)
@@ -108,7 +107,7 @@ func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_p
 		WithErrorListeners(a.monitoringServer).
 		Start().
 		WaitInitialSync()
-	return provider.NewAggregationProvider(r, tracer)
+	return provider.NewAggregationProvider(r, a.Tracer)
 }
 
 func createTracer() *apm.Tracer {
@@ -150,7 +149,9 @@ func main() {
 		klog.Fatalf("unable to parse adapter configuration: %v", err)
 	}
 
-	cmd.monitoringServer = monitoring.NewServer(adapterCfg, cmd.MonitoringPort, cmd.PrometheusMetricsEnabled)
+	cmd.Tracer = createTracer()
+
+	cmd.monitoringServer = monitoring.NewServer(adapterCfg, cmd.MonitoringPort, cmd.PrometheusMetricsEnabled, cmd.Tracer)
 	go cmd.monitoringServer.Start()
 
 	elasticsearchProvider := cmd.makeProviderOrDie(adapterCfg)

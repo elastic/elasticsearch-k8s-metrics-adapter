@@ -31,6 +31,8 @@ import (
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"go.elastic.co/apm"
+	"go.elastic.co/apm/module/apmprometheus"
 )
 
 const defaultFailureThreshold = 3
@@ -62,7 +64,7 @@ func NewCounters() *Counters {
 	}
 }
 
-func NewServer(adapterCfg *config.Config, port int, enablePrometheusMetrics bool) *Server {
+func NewServer(adapterCfg *config.Config, port int, enablePrometheusMetrics bool, tracer *apm.Tracer) *Server {
 	failureThreshold := adapterCfg.ReadinessProbe.FailureThreshold
 	if failureThreshold == 0 {
 		failureThreshold = defaultFailureThreshold
@@ -76,6 +78,8 @@ func NewServer(adapterCfg *config.Config, port int, enablePrometheusMetrics bool
 			clientSuccesses.ExternalMetrics[clientCfg.Name] = 0
 		}
 	}
+	// Register the default prometheus
+	tracer.RegisterMetricsGatherer(apmprometheus.Wrap(prometheus.DefaultGatherer))
 	return &Server{
 		lock:                    sync.RWMutex{},
 		adapterCfg:              adapterCfg,

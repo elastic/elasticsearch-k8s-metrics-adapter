@@ -9,7 +9,7 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.1
-	go.elastic.co/apm v1.11.0
+	go.elastic.co/apm v1.15.0
 	go.elastic.co/apm/module/apmelasticsearch v1.11.0
 	golang.org/x/sys v0.5.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
@@ -79,6 +79,7 @@ require (
 	github.com/spf13/cobra v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	go.elastic.co/apm/module/apmhttp v1.11.0 // indirect
+	go.elastic.co/apm/module/apmprometheus v1.15.0
 	go.elastic.co/fastjson v1.1.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.5 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.5 // indirect
@@ -121,4 +122,10 @@ require (
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
+)
+
+require (
+	github.com/elastic/go-licenser v0.3.1 // indirect
+	github.com/jcchavezs/porto v0.1.0 // indirect
+	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 )

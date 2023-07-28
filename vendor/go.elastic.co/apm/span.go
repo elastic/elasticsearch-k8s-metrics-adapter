@@ -22,6 +22,7 @@ import (
 	"encoding/binary"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.elastic.co/apm/stacktrace"
@@ -64,7 +65,7 @@ func (tx *Transaction) StartSpan(name, spanType string, parent *Span) *Span {
 // span type, subtype, and action; a single dot separates span type and
 // subtype, and the action will not be set.
 func (tx *Transaction) StartSpanOptions(name, spanType string, opts SpanOptions) *Span {
-	if tx == nil {
+	if tx == nil || opts.parent.IsExitSpan() {
 		return newDroppedSpan()
 	}
 
@@ -76,6 +77,12 @@ func (tx *Transaction) StartSpanOptions(name, spanType string, opts SpanOptions)
 		}
 	}
 	transactionID := tx.traceContext.Span
+
+	// Lock the parent first to avoid deadlocks in breakdown metrics calculation.
+	if opts.parent != nil {
+		opts.parent.mu.Lock()
+		defer opts.parent.mu.Unlock()
+	}
 
 	// Prevent tx from being ended while we're starting a span.
 	tx.mu.RLock()
@@ -95,14 +102,20 @@ func (tx *Transaction) StartSpanOptions(name, spanType string, opts SpanOptions)
 	span := tx.tracer.startSpan(name, spanType, transactionID, opts)
 	span.tx = tx
 	span.parent = opts.parent
+	if opts.ExitSpan {
+		span.exit = true
+	}
 
 	// Guard access to spansCreated, spansDropped, rand, and childrenTimer.
 	tx.TransactionData.mu.Lock()
 	defer tx.TransactionData.mu.Unlock()
-	if !span.traceContext.Options.Recorded() {
-		span.tracer = nil // span is dropped
-	} else if tx.maxSpans >= 0 && tx.spansCreated >= tx.maxSpans {
-		span.tracer = nil // span is dropped
+
+	notRecorded := !span.traceContext.Options.Recorded()
+	exceedsMaxSpans := tx.maxSpans >= 0 && tx.spansCreated >= tx.maxSpans
+	// Drop span when it is not recorded.
+	if span.dropWhen(notRecorded) {
+		// nothing to do here since it isn't recorded.
+	} else if span.dropWhen(exceedsMaxSpans) {
 		tx.spansDropped++
 	} else {
 		if opts.SpanID.Validate() == nil {
@@ -112,13 +125,13 @@ func (tx *Transaction) StartSpanOptions(name, spanType string, opts SpanOptions)
 		}
 		span.stackFramesMinDuration = tx.spanFramesMinDuration
 		span.stackTraceLimit = tx.stackTraceLimit
+		span.compressedSpan.options = tx.compressedSpan.options
+		span.exitSpanMinDuration = tx.exitSpanMinDuration
 		tx.spansCreated++
 	}
 
 	if tx.breakdownMetricsEnabled {
 		if span.parent != nil {
-			span.parent.mu.Lock()
-			defer span.parent.mu.Unlock()
 			if !span.parent.ended() {
 				span.parent.childrenTimer.childStarted(span.timestamp)
 			}
@@ -139,7 +152,10 @@ func (tx *Transaction) StartSpanOptions(name, spanType string, opts SpanOptions)
 // way will not have the "max spans" configuration applied, nor will they be
 // considered in any transaction's span count.
 func (t *Tracer) StartSpan(name, spanType string, transactionID SpanID, opts SpanOptions) *Span {
-	if opts.Parent.Trace.Validate() != nil || opts.Parent.Span.Validate() != nil || transactionID.Validate() != nil {
+	if opts.Parent.Trace.Validate() != nil ||
+		opts.Parent.Span.Validate() != nil ||
+		transactionID.Validate() != nil ||
+		opts.parent.IsExitSpan() {
 		return newDroppedSpan()
 	}
 	if !opts.Parent.Options.Recorded() {
@@ -162,6 +178,11 @@ func (t *Tracer) StartSpan(name, spanType string, transactionID SpanID, opts Spa
 	instrumentationConfig := t.instrumentationConfig()
 	span.stackFramesMinDuration = instrumentationConfig.spanFramesMinDuration
 	span.stackTraceLimit = instrumentationConfig.stackTraceLimit
+	span.compressedSpan.options = instrumentationConfig.compressionOptions
+	span.exitSpanMinDuration = instrumentationConfig.exitSpanMinDuration
+	if opts.ExitSpan {
+		span.exit = true
+	}
 
 	return span
 }
@@ -174,6 +195,10 @@ type SpanOptions struct {
 	// SpanID holds the ID to assign to the span. If this is zero, a new ID
 	// will be generated and used instead.
 	SpanID SpanID
+
+	// Indicates whether a span is an exit span or not. All child spans
+	// will be noop spans.
+	ExitSpan bool
 
 	// parent, if non-nil, holds the parent span.
 	//
@@ -234,6 +259,11 @@ type Span struct {
 	parent        *Span
 	traceContext  TraceContext
 	transactionID SpanID
+	parentID      SpanID
+	exit          bool
+
+	// ctxPropagated is set to 1 when the traceContext is propagated downstream.
+	ctxPropagated uint32
 
 	mu sync.RWMutex
 
@@ -247,6 +277,7 @@ func (s *Span) TraceContext() TraceContext {
 	if s == nil {
 		return TraceContext{}
 	}
+	atomic.StoreUint32(&s.ctxPropagated, 1)
 	return s.traceContext
 }
 
@@ -262,6 +293,8 @@ func (s *Span) SetStacktrace(skip int) {
 	if s.ended() {
 		return
 	}
+	s.SpanData.mu.Lock()
+	defer s.SpanData.mu.Unlock()
 	s.SpanData.setStacktrace(skip + 1)
 }
 
@@ -280,6 +313,21 @@ func (s *Span) dropped() bool {
 	return s.tracer == nil
 }
 
+// dropWhen unsets the tracer when the passed bool cond is `true` and returns
+// `true` only when the span is dropped. If the span has already been dropped
+// or the condition isn't `true`, it then returns `false`.
+//
+// Must be called with s.mu.Lock held to be able to write to s.tracer.
+func (s *Span) dropWhen(cond bool) bool {
+	if s.Dropped() {
+		return false
+	}
+	if cond {
+		s.tracer = nil
+	}
+	return cond
+}
+
 // End marks the s as being complete; s must not be used after this.
 //
 // If s.Duration has not been set, End will set it to the elapsed time
@@ -290,30 +338,91 @@ func (s *Span) End() {
 	if s.ended() {
 		return
 	}
+	if s.exit && !s.Context.setDestinationServiceCalled {
+		// The span was created as an exit span, but the user did not
+		// manually set the destination.service.resource
+		s.setExitSpanDestinationService()
+	}
 	if s.Duration < 0 {
 		s.Duration = time.Since(s.timestamp)
 	}
 	if s.Outcome == "" {
 		s.Outcome = s.Context.outcome()
-	}
-	if s.dropped() {
-		if s.tx == nil {
-			droppedSpanDataPool.Put(s.SpanData)
-		} else {
-			s.reportSelfTime()
-			s.reset(s.tx.tracer)
+		if s.Outcome == "" {
+			if s.errorCaptured {
+				s.Outcome = "failure"
+			} else {
+				s.Outcome = "success"
+			}
 		}
-		s.SpanData = nil
-		return
 	}
-	if len(s.stacktrace) == 0 && s.Duration >= s.stackFramesMinDuration {
+	if !s.dropped() && len(s.stacktrace) == 0 &&
+		s.Duration >= s.stackFramesMinDuration {
 		s.setStacktrace(1)
 	}
-	if s.tx != nil {
-		s.reportSelfTime()
+	// If this span has a parent span, lock it before proceeding to
+	// prevent deadlocking when concurrently ending parent and child.
+	if s.parent != nil {
+		s.parent.mu.Lock()
+		defer s.parent.mu.Unlock()
 	}
-	s.enqueue()
+	if s.tx != nil {
+		s.tx.mu.RLock()
+		defer s.tx.mu.RUnlock()
+		if !s.tx.ended() {
+			s.tx.TransactionData.mu.Lock()
+			defer s.tx.TransactionData.mu.Unlock()
+			s.reportSelfTime()
+		}
+	}
+
+	evictedSpan, cached := s.attemptCompress()
+	if evictedSpan != nil {
+		evictedSpan.end()
+	}
+	if cached {
+		// s has been cached for potential compression, and will be enqueued
+		// by a future call to attemptCompress on a sibling span, or when the
+		// parent is ended.
+		return
+	}
+	s.end()
+}
+
+// end represents a subset of the public `s.End()` API  and will only attempt
+// to drop the span when it's a short exit span or enqueue it in case it's not.
+//
+// end must only be called with from `s.End()` and `tx.End()` with `s.mu`,
+// s.tx.mu.Rlock and s.tx.TransactionData.mu held.
+func (s *Span) end() {
+	// After an exit span finishes (no more compression attempts), we drop it
+	// when s.duration <= `exit_span_min_duration` and increment the tx dropped
+	// count.
+	s.dropFastExitSpan()
+
+	if s.dropped() {
+		if s.tx != nil {
+			if !s.tx.ended() {
+				s.aggregateDroppedSpanStats()
+			} else {
+				s.reset(s.tx.tracer)
+			}
+		} else {
+			droppedSpanDataPool.Put(s.SpanData)
+		}
+	} else {
+		s.enqueue()
+	}
+
 	s.SpanData = nil
+}
+
+// ParentID returns the ID of the span's parent span or transaction.
+func (s *Span) ParentID() SpanID {
+	if s == nil {
+		return SpanID{}
+	}
+	return s.parentID
 }
 
 // reportSelfTime reports the span's self-time to its transaction, and informs
@@ -325,22 +434,14 @@ func (s *Span) End() {
 func (s *Span) reportSelfTime() {
 	endTime := s.timestamp.Add(s.Duration)
 
-	// TODO(axw) try to find a way to not lock the transaction when
-	// ending every span. We already lock them when starting spans.
-	s.tx.mu.RLock()
-	defer s.tx.mu.RUnlock()
 	if s.tx.ended() || !s.tx.breakdownMetricsEnabled {
 		return
 	}
 
-	s.tx.TransactionData.mu.Lock()
-	defer s.tx.TransactionData.mu.Unlock()
 	if s.parent != nil {
-		s.parent.mu.Lock()
 		if !s.parent.ended() {
 			s.parent.childrenTimer.childEnded(endTime)
 		}
-		s.parent.mu.Unlock()
 	} else {
 		s.tx.childrenTimer.childEnded(endTime)
 	}
@@ -355,9 +456,7 @@ func (s *Span) enqueue() {
 	case s.tracer.events <- event:
 	default:
 		// Enqueuing a span should never block.
-		s.tracer.statsMu.Lock()
-		s.tracer.stats.SpansDropped++
-		s.tracer.statsMu.Unlock()
+		s.tracer.stats.accumulate(TracerStats{SpansDropped: 1})
 		s.reset(s.tracer)
 	}
 }
@@ -366,15 +465,77 @@ func (s *Span) ended() bool {
 	return s.SpanData == nil
 }
 
+func (s *Span) setExitSpanDestinationService() {
+	resource := s.Subtype
+	if resource == "" {
+		resource = s.Type
+	}
+	s.Context.SetDestinationService(DestinationServiceSpanContext{
+		Resource: resource,
+	})
+}
+
+// IsExitSpan returns true if the span is an exit span.
+func (s *Span) IsExitSpan() bool {
+	if s == nil {
+		return false
+	}
+	return s.exit
+}
+
+// aggregateDroppedSpanStats aggregates the current span into the transaction
+// dropped spans stats timings.
+//
+// Must only be called from end() with s.tx.mu and s.tx.TransactionData.mu held.
+func (s *Span) aggregateDroppedSpanStats() {
+	// An exit span would have the destination service set but in any case, we
+	// check the field value before adding an entry to the dropped spans stats.
+	service := s.Context.destinationService.Resource
+	if s.dropped() && s.IsExitSpan() && service != "" {
+		count := 1
+		if !s.composite.empty() {
+			count = s.composite.count
+		}
+		s.tx.droppedSpansStats.add(service, s.Outcome, count, s.Duration)
+	}
+}
+
+// discardable returns whether or not the span can be dropped.
+//
+// It should be called with s.mu held.
+func (s *Span) discardable() bool {
+	return s.isCompressionEligible() && s.Duration < s.exitSpanMinDuration
+}
+
+// dropFastExitSpan drops an exit span that is discardable and increments the
+// s.tx.spansDropped. If the transaction is nil or has ended, the span will not
+// be dropped.
+//
+// Must be called with s.tx.TransactionData held.
+func (s *Span) dropFastExitSpan() {
+	if s.tx == nil || s.tx.ended() {
+		return
+	}
+	if !s.dropWhen(s.discardable()) {
+		return
+	}
+	if !s.tx.ended() {
+		s.tx.spansCreated--
+		s.tx.spansDropped++
+	}
+}
+
 // SpanData holds the details for a span, and is embedded inside Span.
 // When a span is ended or discarded, its SpanData field will be set
 // to nil.
 type SpanData struct {
-	parentID               SpanID
+	exitSpanMinDuration    time.Duration
 	stackFramesMinDuration time.Duration
 	stackTraceLimit        int
 	timestamp              time.Time
 	childrenTimer          childrenTimer
+	composite              compositeSpan
+	compressedSpan         compressedSpan
 
 	// Name holds the span name, initialized with the value passed to StartSpan.
 	Name string
@@ -409,7 +570,9 @@ type SpanData struct {
 	// Context describes the context in which span occurs.
 	Context SpanContext
 
-	stacktrace []stacktrace.Frame
+	mu            sync.Mutex
+	stacktrace    []stacktrace.Frame
+	errorCaptured bool
 }
 
 func (s *SpanData) setStacktrace(skip int) {

@@ -18,6 +18,8 @@
 package apm // import "go.elastic.co/apm"
 
 import (
+	"time"
+
 	"go.elastic.co/apm/internal/ringbuffer"
 	"go.elastic.co/apm/model"
 	"go.elastic.co/apm/stacktrace"
@@ -113,7 +115,7 @@ func (w *modelWriter) buildModelTransaction(out *model.Transaction, tx *Transact
 		out.SampleRate = &tx.traceContext.State.sampleRate
 	}
 
-	out.ParentID = model.SpanID(td.parentSpan)
+	out.ParentID = model.SpanID(tx.parentID)
 	out.Name = truncateString(td.Name)
 	out.Type = truncateString(td.Type)
 	out.Result = truncateString(td.Result)
@@ -122,6 +124,10 @@ func (w *modelWriter) buildModelTransaction(out *model.Transaction, tx *Transact
 	out.Duration = td.Duration.Seconds() * 1000
 	out.SpanCount.Started = td.spansCreated
 	out.SpanCount.Dropped = td.spansDropped
+	if dss := buildDroppedSpansStats(td.droppedSpansStats); len(dss) > 0 {
+		out.DroppedSpansStats = dss
+	}
+
 	if sampled {
 		out.Context = td.Context.build()
 	}
@@ -136,7 +142,7 @@ func (w *modelWriter) buildModelSpan(out *model.Span, span *Span, sd *SpanData) 
 		out.SampleRate = &span.traceContext.State.sampleRate
 	}
 
-	out.ParentID = model.SpanID(sd.parentID)
+	out.ParentID = model.SpanID(span.parentID)
 	out.Name = truncateString(sd.Name)
 	out.Type = truncateString(sd.Type)
 	out.Subtype = truncateString(sd.Subtype)
@@ -145,6 +151,9 @@ func (w *modelWriter) buildModelSpan(out *model.Span, span *Span, sd *SpanData) 
 	out.Duration = sd.Duration.Seconds() * 1000
 	out.Outcome = normalizeOutcome(sd.Outcome)
 	out.Context = sd.Context.build()
+	if sd.composite.count > 1 {
+		out.Composite = sd.composite.build()
+	}
 
 	// Copy the span type to context.destination.service.type.
 	if out.Context != nil && out.Context.Destination != nil && out.Context.Destination.Service != nil {
@@ -272,4 +281,23 @@ func normalizeOutcome(outcome string) string {
 	default:
 		return "unknown"
 	}
+}
+
+func buildDroppedSpansStats(dss droppedSpanTimingsMap) []model.DroppedSpansStats {
+	out := make([]model.DroppedSpansStats, 0, len(dss))
+	for k, timing := range dss {
+		out = append(out, model.DroppedSpansStats{
+			DestinationServiceResource: k.destination,
+			Outcome:                    normalizeOutcome(k.outcome),
+			Duration: model.AggregateDuration{
+				Count: int(timing.count),
+				Sum: model.DurationSum{
+					// The internal representation of spanTimingsMap is in time.Nanosecond
+					// unit which we need to convert to us.
+					Us: timing.duration / int64(time.Microsecond),
+				},
+			},
+		})
+	}
+	return out
 }

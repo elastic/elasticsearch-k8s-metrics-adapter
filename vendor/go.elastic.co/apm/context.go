@@ -32,6 +32,7 @@ import (
 type Context struct {
 	model               model.Context
 	request             model.Request
+	httpRequest         *http.Request
 	requestBody         model.RequestBody
 	requestSocket       model.RequestSocket
 	response            model.Response
@@ -158,7 +159,8 @@ func (c *Context) SetFramework(name, version string) {
 // If the request contains HTTP Basic Authentication, the username
 // from that will be recorded in the context. Otherwise, if the
 // request contains user info in the URL (i.e. a client-side URL),
-// that will be used.
+// that will be used. An explicit call to SetUsername always takes
+// precedence.
 func (c *Context) SetHTTPRequest(req *http.Request) {
 	// Special cases to avoid calling into fmt.Sprintf in most cases.
 	var httpVersion string
@@ -170,6 +172,8 @@ func (c *Context) SetHTTPRequest(req *http.Request) {
 	default:
 		httpVersion = fmt.Sprintf("%d.%d", req.ProtoMajor, req.ProtoMinor)
 	}
+
+	c.httpRequest = req
 
 	c.request = model.Request{
 		Body:        c.request.Body,
@@ -193,20 +197,21 @@ func (c *Context) SetHTTPRequest(req *http.Request) {
 	}
 
 	c.requestSocket = model.RequestSocket{
-		Encrypted:     req.TLS != nil,
 		RemoteAddress: apmhttputil.RemoteAddr(req),
 	}
 	if c.requestSocket != (model.RequestSocket{}) {
 		c.request.Socket = &c.requestSocket
 	}
 
-	username, _, ok := req.BasicAuth()
-	if !ok && req.URL.User != nil {
-		username = req.URL.User.Username()
-	}
-	c.user.Username = truncateString(username)
-	if c.user.Username != "" {
-		c.model.User = &c.user
+	if c.model.User == nil {
+		username, _, ok := req.BasicAuth()
+		if !ok && req.URL.User != nil {
+			username = req.URL.User.Username()
+		}
+		c.user.Username = truncateString(username)
+		if c.user.Username != "" {
+			c.model.User = &c.user
+		}
 	}
 }
 
@@ -216,7 +221,7 @@ func (c *Context) SetHTTPRequestBody(bc *BodyCapturer) {
 	if bc == nil || bc.captureBody&c.captureBodyMask == 0 {
 		return
 	}
-	if bc.setContext(&c.requestBody) {
+	if bc.setContext(&c.requestBody, c.httpRequest) {
 		c.request.Body = &c.requestBody
 	}
 }
