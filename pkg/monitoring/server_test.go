@@ -50,7 +50,7 @@ func TestServer_ServeHTTP(t *testing.T) {
 				MetricTypes: &config.MetricTypes{config.ExternalMetricType},
 			},
 		},
-	}, 0, false)
+	}, 0, false, nil)
 
 	// Initial status: not ready
 	recorder := httptest.NewRecorder()
