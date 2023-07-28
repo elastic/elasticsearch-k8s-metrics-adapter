@@ -79,7 +79,10 @@ func NewServer(adapterCfg *config.Config, port int, enablePrometheusMetrics bool
 		}
 	}
 	// Register the default prometheus
-	tracer.RegisterMetricsGatherer(apmprometheus.Wrap(prometheus.DefaultGatherer))
+	if tracer != nil {
+		tracer.RegisterMetricsGatherer(apmprometheus.Wrap(prometheus.DefaultGatherer))
+	}
+
 	return &Server{
 		lock:                    sync.RWMutex{},
 		adapterCfg:              adapterCfg,
