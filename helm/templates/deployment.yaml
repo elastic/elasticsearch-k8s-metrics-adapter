@@ -43,13 +43,10 @@ spec:
             "--cert-dir=/var/run/serving-cert",
             "--v", "{{ .Values.logVerbosity }}",
           ]
+          {{- with $.Values.resources }}
           resources:
-            limits:
-              cpu: "{{ .Values.resources.limits.cpu }}"
-              memory: "{{ .Values.resources.limits.memory }}"
-            requests:
-              cpu:  "{{ .Values.resources.requests.cpu }}"
-              memory: "{{ .Values.resources.requests.memory }}"
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 6443
               name: https
