@@ -3,16 +3,6 @@ env:
   DOCKER_IMAGE_TAG: "git-${BUILDKITE_COMMIT:0:12}"
 
 steps:
-  - label: ":go: test quality-gate"
-    command: "./.buildkite/quality-gates/check-metrics-count.sh"
-    env:
-       TARGET_ENV: "qa"
-
-  - label: ":go: test quality-gate"
-    command: "./.buildkite/quality-gates/check-pod-restart-count.sh"
-    env:
-       TARGET_ENV: "qa"
-
   - label: ":go: Run unit tests"
     command: "make test"
     key: "tests"

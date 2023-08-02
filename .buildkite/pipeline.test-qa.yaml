@@ -1,0 +1,15 @@
+steps:
+  - command:
+    - echo "Waiting for 10m for indicative health metrics"
+    - sleep 600
+  - wait
+
+  - label: "Check metrics count"
+    command: "./.buildkite/quality-gates/check-metrics-count.sh"
+    env:
+       TARGET_ENV: "qa"
+
+  - label: "Check pod restart count"
+    command: "./.buildkite/quality-gates/check-pod-restart-count.sh"
+    env:
+       TARGET_ENV: "qa"

@@ -1,0 +1,20 @@
+env:
+  ENVIRONMENT: ${ENVIRONMENT?}
+  TEAM_CHANNEL: "#cp-serverless-applications"
+
+steps:
+  - label: ":pipeline::grey_question::seedling: Trigger Service Tests for ${ENVIRONMENT}"
+    command: |
+      TEST_PIPELINE=".buildkite/pipeline.test-$${ENVIRONMENT}.yaml"
+      if test -f "$${TEST_PIPELINE}"; then
+          buildkite-agent pipeline upload "$$TEST_PIPELINE"
+      else
+          buildkite-agent annotate "No test run after the upgrade in
+      $${ENVIRONMENT}. <br>
+      Define a pipeline defined at $$TEST_PIPELINE."
+          echo "No pipeline was defined at $$TEST_PIPELINE. There is nothing
+      to do here..."
+      fi
+notify:
+  - slack: "${TEAM_CHANNEL?}"
+    if: build.state == "failed"
