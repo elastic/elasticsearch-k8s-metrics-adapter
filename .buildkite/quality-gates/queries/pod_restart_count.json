@@ -1,0 +1,37 @@
+{
+    "track_total_hits": true,
+    "size": 0,
+    "query": {
+        "bool": {
+            "filter": [
+                {
+                    "term": {
+                        "kubernetes.container.name": "elasticsearch-metrics-apiserver"
+                    }
+                },
+                {
+                    "range": {
+                        "@timestamp": {
+                            "gte": "now-10m"
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "aggs": {
+        "podNames":{
+            "terms": {
+                "size": 50,
+                "field": "kubernetes.pod.name"
+            },
+            "aggs":{
+              "max_restarts":{
+                "max": {
+                  "field": "kubernetes.container.status.restarts"
+                }
+              }
+            }
+        }
+    }
+}
