@@ -3,11 +3,8 @@ env:
   DOCKER_IMAGE_TAG: "git-${BUILDKITE_COMMIT:0:12}"
 
 steps:
-  - label: ":go: test vault pull qa"
-    command: "vault kv get -format=json kv/ci-shared/serverless/quality-gates/qa-observability"
-  
-  - label: ":go: test vaul staging"
-    command: "vault kv get -format=json kv/ci-shared/serverless/quality-gates/staging-observability"
+  - label: ":go: test quality-gate"
+    command: "./.buildkite/quality-gates/check-metrics-count.sh"
 
   - label: ":go: Run unit tests"
     command: "make test"
