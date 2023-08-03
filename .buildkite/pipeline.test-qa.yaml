@@ -4,12 +4,15 @@ steps:
     - sleep 600
   - wait
 
-  - label: "Check metrics count"
-    command: "./.buildkite/quality-gates/check-metrics-count.sh"
-    env:
-       TARGET_ENV: "qa"
-
-  - label: "Check pod restart count"
-    command: "./.buildkite/quality-gates/check-pod-restart-count.sh"
-    env:
-       TARGET_ENV: "qa"
+  - label: ":rocket: Run observability gates"
+    trigger: "serverless-quality-gates"
+    build:
+      branch: main
+      commit: HEAD
+      message: "${BUILDKITE_MESSAGE}"
+      env:
+        TARGET_ENV: qa
+        SERVICE: elasticsearch-metrics-apiserver
+        CONTAINER_NAME: elasticsearch-metrics-apiserver
+        CHECK_CONTAINER_RESTART_COUNT: true
+        CHECK_METRICS_COUNT: true
