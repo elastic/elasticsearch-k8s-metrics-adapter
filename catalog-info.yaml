@@ -41,7 +41,7 @@ apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
   name: elasticsearch-k8s-metrics-adapter-tests-pipeline
-  description: Definition of the lelasticsearch-k8s-metrics-adapterr-tests pipeline
+  description: Definition of the lelasticsearch-k8s-metrics-adapter-tests pipeline
   links:
     - title: Pipeline
       url: https://buildkite.com/elastic/elasticsearch-k8s-metrics-adapter-tests
