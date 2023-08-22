@@ -203,8 +203,14 @@ func (r *recorder) _processMappingDocument(root string, d map[string]interface{}
 				if t, hasType := child["type"]; !(hasType && isTypeAllowed(t.(string))) {
 					continue
 				}
+				metricName := ""
 				// New metric
-				metricName := fmt.Sprintf("%s.%s", root, k)
+				if root == "" {
+					metricName = k
+				} else {
+					metricName = fmt.Sprintf("%s.%s", root, k)
+				}
+
 				fields := fieldsSet.FindMetadata(metricName)
 				if fields == nil {
 					// field does not match a pattern, do not register it as available
