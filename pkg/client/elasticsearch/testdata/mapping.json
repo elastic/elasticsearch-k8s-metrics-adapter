@@ -1,0 +1,457 @@
+{
+  "mappings": {
+    "_data_stream_timestamp": {
+      "enabled": true
+    },
+    "dynamic_templates": [
+      {
+        "long_metrics": {
+          "match_mapping_type": "long",
+          "mapping": {
+            "index": false,
+            "type": "long"
+          }
+        }
+      },
+      {
+        "double_metrics": {
+          "match_mapping_type": "double",
+          "mapping": {
+            "index": false,
+            "type": "float"
+          }
+        }
+      },
+      {
+        "match_ip": {
+          "match": "ip",
+          "match_mapping_type": "string",
+          "mapping": {
+            "type": "ip"
+          }
+        }
+      },
+      {
+        "match_message": {
+          "match": "message",
+          "match_mapping_type": "string",
+          "mapping": {
+            "type": "match_only_text"
+          }
+        }
+      },
+      {
+        "strings_as_keyword": {
+          "match_mapping_type": "string",
+          "mapping": {
+            "ignore_above": 1024,
+            "type": "keyword"
+          }
+        }
+      }
+    ],
+    "date_detection": false,
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "root_metric": {
+        "type": "float",
+        "index": false
+      },
+      "agent": {
+        "properties": {
+          "ephemeral_id": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "id": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "name": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "type": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "version": {
+            "type": "keyword",
+            "ignore_above": 1024
+          }
+        }
+      },
+      "cloud": {
+        "properties": {
+          "account": {
+            "properties": {
+              "id": {
+                "type": "keyword",
+                "ignore_above": 1024
+              }
+            }
+          },
+          "availability_zone": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "instance": {
+            "properties": {
+              "id": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "name": {
+                "type": "keyword",
+                "ignore_above": 1024
+              }
+            }
+          },
+          "machine": {
+            "properties": {
+              "type": {
+                "type": "keyword",
+                "ignore_above": 1024
+              }
+            }
+          },
+          "project": {
+            "properties": {
+              "id": {
+                "type": "keyword",
+                "ignore_above": 1024
+              }
+            }
+          },
+          "provider": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "service": {
+            "properties": {
+              "name": {
+                "type": "keyword",
+                "ignore_above": 1024
+              }
+            }
+          }
+        }
+      },
+      "data_stream": {
+        "properties": {
+          "dataset": {
+            "type": "constant_keyword",
+            "value": "system.cpu"
+          },
+          "namespace": {
+            "type": "constant_keyword",
+            "value": "default"
+          },
+          "type": {
+            "type": "constant_keyword",
+            "value": "metrics"
+          }
+        }
+      },
+      "ecs": {
+        "properties": {
+          "version": {
+            "type": "keyword",
+            "ignore_above": 1024
+          }
+        }
+      },
+      "elastic_agent": {
+        "properties": {
+          "id": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "snapshot": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "keyword",
+            "ignore_above": 1024
+          }
+        }
+      },
+      "event": {
+        "properties": {
+          "dataset": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "duration": {
+            "type": "long",
+            "index": false
+          },
+          "module": {
+            "type": "keyword",
+            "ignore_above": 1024
+          }
+        }
+      },
+      "host": {
+        "properties": {
+          "architecture": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "containerized": {
+            "type": "boolean"
+          },
+          "cpu": {
+            "properties": {
+              "usage": {
+                "type": "float",
+                "index": false
+              }
+            }
+          },
+          "hostname": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "ip": {
+            "type": "ip"
+          },
+          "mac": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "name": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "os": {
+            "properties": {
+              "codename": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "family": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "kernel": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "name": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "platform": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "type": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "version": {
+                "type": "keyword",
+                "ignore_above": 1024
+              }
+            }
+          }
+        }
+      },
+      "metricset": {
+        "properties": {
+          "name": {
+            "type": "keyword",
+            "ignore_above": 1024
+          },
+          "period": {
+            "type": "long",
+            "index": false
+          }
+        }
+      },
+      "orchestrator": {
+        "properties": {
+          "cluster": {
+            "properties": {
+              "name": {
+                "type": "keyword",
+                "ignore_above": 1024
+              },
+              "url": {
+                "type": "keyword",
+                "ignore_above": 1024
+              }
+            }
+          }
+        }
+      },
+      "service": {
+        "properties": {
+          "type": {
+            "type": "keyword",
+            "ignore_above": 1024
+          }
+        }
+      },
+      "system": {
+        "properties": {
+          "cpu": {
+            "properties": {
+              "cores": {
+                "type": "long",
+                "index": false
+              },
+              "idle": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "float",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "float",
+                    "index": false
+                  }
+                }
+              },
+              "iowait": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "long",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "long",
+                    "index": false
+                  }
+                }
+              },
+              "irq": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "long",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "long",
+                    "index": false
+                  }
+                }
+              },
+              "nice": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "long",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "long",
+                    "index": false
+                  }
+                }
+              },
+              "softirq": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "long",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "float",
+                    "index": false
+                  }
+                }
+              },
+              "steal": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "long",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "long",
+                    "index": false
+                  }
+                }
+              },
+              "system": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "float",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "float",
+                    "index": false
+                  }
+                }
+              },
+              "total": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "float",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "float",
+                    "index": false
+                  }
+                }
+              },
+              "user": {
+                "properties": {
+                  "norm": {
+                    "properties": {
+                      "pct": {
+                        "type": "float",
+                        "index": false
+                      }
+                    }
+                  },
+                  "pct": {
+                    "type": "float",
+                    "index": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
