@@ -5,7 +5,6 @@ WORKDIR /go/src/github.com/elastic/elasticsearch-k8s-metrics-adapter
 COPY ["go.mod", "go.sum", "./"]
 COPY generated/       generated/
 COPY pkg/       pkg/
-COPY vendor/    vendor/
 COPY main.go    main.go
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o elasticsearch-k8s-metrics-adapter github.com/elastic/elasticsearch-k8s-metrics-adapter
