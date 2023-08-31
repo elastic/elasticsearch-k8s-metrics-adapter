@@ -5,22 +5,22 @@ go 1.20
 require (
 	github.com/elastic/go-elasticsearch/v8 v8.6.0
 	github.com/itchyny/gojq v0.12.3
-	github.com/prometheus/client_golang v1.14.0
+	github.com/prometheus/client_golang v1.16.0
 	github.com/prometheus/procfs v0.8.0 // indirect
-	github.com/sirupsen/logrus v1.8.1
-	github.com/stretchr/testify v1.8.1
+	github.com/sirupsen/logrus v1.9.3
+	github.com/stretchr/testify v1.8.4
 	go.elastic.co/apm v1.11.0
 	go.elastic.co/apm/module/apmelasticsearch v1.11.0
 	golang.org/x/sys v0.5.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.25.4
-	k8s.io/apiserver v0.25.4
-	k8s.io/client-go v0.25.4
-	k8s.io/component-base v0.25.4
+	k8s.io/apimachinery v0.28.1
+	k8s.io/apiserver v0.28.1
+	k8s.io/client-go v0.28.1
+	k8s.io/component-base v0.28.1
 	k8s.io/klog/v2 v2.80.1
-	k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1
-	k8s.io/metrics v0.25.4
-	sigs.k8s.io/custom-metrics-apiserver v1.25.1
+	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9
+	k8s.io/metrics v0.28.1
+	sigs.k8s.io/custom-metrics-apiserver v1.27.0
 )
 
 require (
