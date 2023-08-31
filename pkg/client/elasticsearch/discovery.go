@@ -21,13 +21,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"text/template"
 
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/itchyny/gojq"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
@@ -61,7 +61,7 @@ type MetricMetadata struct {
 func (mc *MetricsClient) discoverMetrics() error {
 	namer, err := config.NewNamer(mc.GetConfiguration().Rename)
 	if err != nil {
-		klog.Fatalf("%s: failed to create namer: %v", mc.GetConfiguration().Name, err)
+		return fmt.Errorf("%s: failed to create namer: %v", mc.GetConfiguration().Name, err)
 	}
 	metricRecorder := newRecorder(namer)
 
@@ -73,12 +73,12 @@ func (mc *MetricsClient) discoverMetrics() error {
 				search.Template = template.Must(template.New("").Parse(search.Body))
 				metricResultQuery, err := gojq.Parse(search.MetricPath)
 				if err != nil {
-					klog.Fatalf("Error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
+					return fmt.Errorf("error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
 				}
 				search.MetricResultQuery = metricResultQuery
 				timestampResultQuery, err := gojq.Parse(search.TimestampPath)
 				if err != nil {
-					klog.Fatalf("Error while parsing timestampResultQuery for field %s: error: %v", field.Name, err)
+					return fmt.Errorf("error while parsing timestampResultQuery for field %s: error: %v", field.Name, err)
 
 				}
 				search.TimestampResultQuery = timestampResultQuery
@@ -129,7 +129,7 @@ func getMappingFor(metricSet config.MetricSet, esClient *esv8.Client, recorder *
 			return fmt.Errorf("error parsing the response body: %s", err)
 		} else {
 			if len(r) == 0 {
-				klog.Infof("Mapping is empty for index pattern %s", metricSet.Indices)
+				logger.Info("Mapping is empty", "index_pattern", strings.Join(metricSet.Indices, ","))
 				return nil
 			}
 			// Process mapping

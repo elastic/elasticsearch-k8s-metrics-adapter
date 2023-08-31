@@ -20,8 +20,6 @@ package scheduler
 import (
 	"sync"
 
-	"k8s.io/klog/v2"
-
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 )
 
@@ -82,8 +80,8 @@ func (s *Scheduler) WithClients(clients ...client.Interface) *Scheduler {
 
 // WaitInitialSync blocks until all the
 func (s *Scheduler) WaitInitialSync() *Scheduler {
-	klog.Infof("Wait until an initial metric list is grabbed from %d metric clients", len(s.sources))
+	logger.Info("Wait until an initial metric list is grabbed from metric clients", "sources_count", len(s.sources))
 	s.wg.Wait()
-	klog.Infof("Initial metric list is grabbed from %d metric clients", len(s.sources))
+	logger.Info("Initial metric list is grabbed from metric clients", "sources_count", len(s.sources))
 	return s
 }

@@ -19,17 +19,20 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
-	"go.elastic.co/apm"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
 	"k8s.io/metrics/pkg/apis/external_metrics"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	"go.elastic.co/apm"
+
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
 )
+
+var logger = log.ForPackage("provider")
 
 // aggregationProvider is an implementation of provider.MetricsProvider which retrieve metrics from a set of metric clients.
 type aggregationProvider struct {
@@ -49,16 +52,16 @@ func NewAggregationProvider(
 }
 
 func (p *aggregationProvider) GetMetricByName(context context.Context, name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
-	klog.V(1).Infof("GetMetricByName(name=%v,info=%v,metricSelector=%v)", name, info, metricSelector)
+	logger.V(1).Info("GetMetricByName", "name", name, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetCustomMetricClient(info)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get metrics backend: %v", err)
+		return nil, err
 	}
 	return metricClient.GetMetricByName(name, info, metricSelector)
 }
 
 func (p *aggregationProvider) GetMetricBySelector(context context.Context, namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
-	klog.V(1).Infof("GetMetricBySelector(namespace=%v,selector=%v,info=%v,metricSelector=%v)", namespace, selector, info, metricSelector)
+	logger.V(1).Info("GetMetricBySelector", "namespace", namespace, "selector", selector, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetCustomMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -67,7 +70,7 @@ func (p *aggregationProvider) GetMetricBySelector(context context.Context, names
 }
 
 func (p *aggregationProvider) GetExternalMetric(context context.Context, namespace string, metricSelector labels.Selector, info provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
-	klog.V(1).Infof("GetExternalMetric(namespace=%v,info=%v,metricSelector=%v)", namespace, info, metricSelector)
+	logger.V(1).Info("GetExternalMetric", "namespace", namespace, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetExternalMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -76,11 +79,11 @@ func (p *aggregationProvider) GetExternalMetric(context context.Context, namespa
 }
 
 func (p *aggregationProvider) ListAllMetrics() []provider.CustomMetricInfo {
-	klog.V(1).Infof("ListAllMetrics()")
+	logger.V(1).Info("ListAllMetrics")
 	return p.registry.ListAllCustomMetrics()
 }
 
 func (p *aggregationProvider) ListAllExternalMetrics() []provider.ExternalMetricInfo {
-	klog.V(1).Infof("ListAllExternalMetrics()")
+	logger.V(1).Info("ListAllExternalMetrics")
 	return p.registry.ListAllExternalMetrics()
 }
