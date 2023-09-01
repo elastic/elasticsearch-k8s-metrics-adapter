@@ -24,18 +24,21 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
-	"go.elastic.co/apm/module/apmzap/v2"
-	"go.elastic.co/ecszap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
+
+	"go.elastic.co/apm/module/apmzap/v2"
+	"go.elastic.co/ecszap"
 )
 
 var (
 	logger logr.Logger
 )
 
-func Configure(verbosity int, serviceType string, serviceVersion string) {
+func Configure(verbosity int, serviceType string, serviceVersion string) func() {
 	zapLevel := zapcore.Level(verbosity * -1)
 
 	// using ecszap module to generate new zap.Core for zap.Logger
@@ -65,6 +68,11 @@ func Configure(verbosity int, serviceType string, serviceVersion string) {
 	flagset := flag.NewFlagSet("", flag.ContinueOnError)
 	klog.InitFlags(flagset)
 	_ = flagset.Set("v", strconv.Itoa(verbosity))
+
+	logs.InitLogs()
+	return func() {
+		logs.FlushLogs()
+	}
 }
 
 func ForPackage(name string) logr.Logger {

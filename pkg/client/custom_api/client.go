@@ -18,6 +18,7 @@
 package custom_api
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -84,7 +85,7 @@ func (mc *metricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 	for _, r := range resources.APIResources {
 		parts := strings.SplitN(r.Name, "/", 2)
 		if len(parts) != 2 {
-			logger.V(2).Info("provider returned a malformed metrics", "provider_name", mc.metricServerCfg.Name, "metric_name", r.Name)
+			logger.Error(errors.New("provider returned a malformed metrics"), "Fail to list custom metrics", "provider_name", mc.metricServerCfg.Name, "metric_name", r.Name)
 			continue
 		}
 		info := provider.CustomMetricInfo{

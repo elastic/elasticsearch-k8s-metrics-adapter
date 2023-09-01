@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -180,7 +181,7 @@ func (mc *MetricsClient) GetExternalMetric(
 	_, _ string,
 	_ labels.Selector,
 ) (*external_metrics.ExternalMetricValueList, error) {
-	logger.V(2).Info("GetExternalMetric: not supported by Elasticsearch metrics client")
+	logger.Error(errors.New("not supported by Elasticsearch metrics client"), "Fail to GetExternalMetric")
 	return nil, nil
 }
 

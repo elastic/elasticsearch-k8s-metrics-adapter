@@ -63,11 +63,9 @@ var (
 )
 
 func main() {
-	log.Configure(defaultLogVerbosity, serviceType, serviceVersion)
+	flushLogs := log.Configure(defaultLogVerbosity, serviceType, serviceVersion)
+	defer flushLogs()
 	logger = log.ForPackage("main")
-
-	logs.InitLogs()
-	defer logs.FlushLogs()
 
 	cmd := &ElasticsearchAdapter{}
 	cmd.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(apiserver.Scheme))
