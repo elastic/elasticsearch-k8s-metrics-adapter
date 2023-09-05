@@ -134,7 +134,7 @@ type ElasticsearchAdapter struct {
 func (a *ElasticsearchAdapter) newMetricsClients(adapterCfg *config.Config, tracer *apm.Tracer) ([]client.Interface, error) {
 	dynamicClient, err := a.DynamicClient()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to construct dynamic dynamicClient: %w", err)
 	}
 
 	mapper, err := a.RESTMapper()
