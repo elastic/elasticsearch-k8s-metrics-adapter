@@ -19,6 +19,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/go-logr/logr"
@@ -139,7 +140,7 @@ func (a *ElasticsearchAdapter) newMetricsClients(adapterCfg *config.Config, trac
 
 	mapper, err := a.RESTMapper()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to construct dynamicClient REST mapper: %w", err)
 	}
 
 	var clients []client.Interface
@@ -153,21 +154,21 @@ func (a *ElasticsearchAdapter) newMetricsClients(adapterCfg *config.Config, trac
 				tracer,
 			)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("unable to construct Elasticsearch dynamicClient: %w", err)
 			}
 			clients = append(clients, esMetricClient)
 		case customMetricServerType:
 			kubeClientCfg, err := a.ClientConfig()
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("unable to construct Kubernetes dynamicClient config: %w", err)
 			}
 			kubeClient, err := kubernetes.NewForConfig(kubeClientCfg)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("unable to construct Kubernetes dynamicClient: %w", err)
 			}
 			metricApiClient, err := custom_api.NewMetricApiClientProvider(kubeClientCfg, mapper).NewClient(kubeClient, clientCfg)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("unable to construct Kubernetes custom metric API dynamicClient: %w", err)
 			}
 			clients = append(clients, metricApiClient)
 		}
