@@ -186,17 +186,17 @@ func (mc *MetricsClient) GetExternalMetric(
 }
 
 func (mc *MetricsClient) ListExternalMetrics() (map[provider.ExternalMetricInfo]struct{}, error) {
-	logger.V(2).Info("ListAllExternalMetrics: not supported by Elasticsearch metrics client")
+	logger.Info("ListAllExternalMetrics: not supported by Elasticsearch metrics client")
 	return nil, nil
 }
 
 func newTLSClientConfig(config *config.TLSClientConfig) (*tls.Config, error) {
 	if config == nil {
 		// If nothing has been set just return a nil struct
-		logger.V(2).Info("No Elasticsearch TLS configuration provided")
+		logger.Info("No Elasticsearch TLS configuration provided")
 		return nil, nil
 	}
-	logger.V(2).Info("Loading Elasticsearch TLS configuration")
+	logger.Info("Loading Elasticsearch TLS configuration")
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: config.Insecure,
 	}
