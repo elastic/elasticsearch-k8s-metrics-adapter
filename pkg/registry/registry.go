@@ -175,7 +175,7 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	var metricClients *metricClients
 	var ok bool
 	if metricClients, ok = r.customMetrics[info]; !ok {
-		logger.V(1).Info("custom metric is not served by any metric client", "metric_name", info.Metric)
+		logger.Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
 		return nil, &errors.StatusError{
 			ErrStatus: metav1.Status{
 				Status:  metav1.StatusFailure,
@@ -188,8 +188,8 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	if err != nil {
 		return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
 	}
-	logger.V(1).Info(
-		"custom metric found", "metric", info.String(),
+	logger.Info(
+		"Custom metric found", "metric", info.String(),
 		"client_name", metricClient.GetConfiguration().Name,
 		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
 	)
@@ -214,8 +214,8 @@ func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (cl
 	if err != nil {
 		return nil, fmt.Errorf("not backend for metric: %v", info.Metric)
 	}
-	logger.V(1).Info(
-		"external metric found", "metric", info.Metric,
+	logger.Info(
+		"External metric found", "metric", info.Metric,
 		"client_name", metricClient.GetConfiguration().Name,
 		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
 	)
