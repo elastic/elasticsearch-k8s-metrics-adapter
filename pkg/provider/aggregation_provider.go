@@ -52,7 +52,7 @@ func NewAggregationProvider(
 }
 
 func (p *aggregationProvider) GetMetricByName(context context.Context, name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
-	logger.V(1).Info("GetMetricByName", "name", name, "info", info, "metricSelector", metricSelector)
+	logger.Info("GetMetricByName", "name", name, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetCustomMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (p *aggregationProvider) GetMetricByName(context context.Context, name type
 }
 
 func (p *aggregationProvider) GetMetricBySelector(context context.Context, namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
-	logger.V(1).Info("GetMetricBySelector", "namespace", namespace, "selector", selector, "info", info, "metricSelector", metricSelector)
+	logger.Info("GetMetricBySelector", "namespace", namespace, "selector", selector, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetCustomMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (p *aggregationProvider) GetMetricBySelector(context context.Context, names
 }
 
 func (p *aggregationProvider) GetExternalMetric(context context.Context, namespace string, metricSelector labels.Selector, info provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
-	logger.V(1).Info("GetExternalMetric", "namespace", namespace, "info", info, "metricSelector", metricSelector)
+	logger.Info("GetExternalMetric", "namespace", namespace, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetExternalMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -79,11 +79,11 @@ func (p *aggregationProvider) GetExternalMetric(context context.Context, namespa
 }
 
 func (p *aggregationProvider) ListAllMetrics() []provider.CustomMetricInfo {
-	logger.V(1).Info("ListAllMetrics")
+	logger.Info("ListAllMetrics")
 	return p.registry.ListAllCustomMetrics()
 }
 
 func (p *aggregationProvider) ListAllExternalMetrics() []provider.ExternalMetricInfo {
-	logger.V(1).Info("ListAllExternalMetrics")
+	logger.Info("ListAllExternalMetrics")
 	return p.registry.ListAllExternalMetrics()
 }
