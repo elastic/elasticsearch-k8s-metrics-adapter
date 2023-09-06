@@ -231,7 +231,6 @@ func (r *Registry) ListAllCustomMetrics() []provider.CustomMetricInfo {
 		infos[count] = k
 		count++
 	}
-	logger.V(1).Info("custom metrics served by the adapter", "count", len(infos))
 	return infos
 }
 
@@ -244,6 +243,5 @@ func (r *Registry) ListAllExternalMetrics() []provider.ExternalMetricInfo {
 		infos[count] = k
 		count++
 	}
-	logger.V(1).Info("external metrics served by the adapter", "count", len(infos))
 	return infos
 }

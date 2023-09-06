@@ -149,7 +149,6 @@ func (mc *metricsClient) GetMetricBySelector(namespace string, selector labels.S
 	if err != nil {
 		return nil, fmt.Errorf("failed to singularize %s: %v", info.GroupResource.Resource, err)
 	}
-	logger.V(1).Info("GetMetricBySelector", "metric_info", info.String())
 	mc.rwLock.Lock()
 	defer mc.rwLock.Unlock()
 	metricName, ok := mc.customMetricNamer.Get(info.Metric)
