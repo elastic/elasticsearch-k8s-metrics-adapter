@@ -162,6 +162,7 @@ func (mc *MetricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 func (mc *MetricsClient) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
 	t, ctx := tracing.NewTransaction(context.TODO(), mc.tracer, "elasticsearch-provider", "GetMetricBySelector")
 	defer tracing.EndTransaction(t)
+	logger.V(1).Info("GetMetricByName", "name", name, "info", info.String(), "metricSelector", metricSelector)
 	value, err := mc.valueFor(&ctx, info, name, labels.NewSelector(), []string{}, metricSelector)
 	if err != nil {
 		return nil, err
@@ -172,6 +173,7 @@ func (mc *MetricsClient) GetMetricByName(name types.NamespacedName, info provide
 func (mc *MetricsClient) GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
 	t, ctx := tracing.NewTransaction(context.TODO(), mc.tracer, "elasticsearch-provider", "GetMetricBySelector")
 	defer tracing.EndTransaction(t)
+	logger.V(1).Info("GetMetricBySelector", "namespace", namespace, "selector", selector, "info", info.String(), "metricSelector", metricSelector)
 	return mc.metricsFor(&ctx, namespace, selector, info, metricSelector)
 }
 
@@ -295,6 +297,7 @@ func (mc *MetricsClient) metricsFor(
 	metricSelector labels.Selector,
 ) (*custom_metrics.MetricValueList, error) {
 	defer tracing.Span(ctx)()
+	logger.V(1).Info("metricsFor", "selector", selector, "metric", info.String())
 	names, err := helpers.ListObjectNames(mc.mapper, mc.client, namespace, selector, info)
 	if err != nil {
 		return nil, err
