@@ -24,6 +24,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
+	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -34,11 +35,19 @@ import (
 	"go.elastic.co/ecszap"
 )
 
+const defaultVerbosity = 0
+
 var (
 	logger logr.Logger
 )
 
-func Configure(verbosity int, serviceType string, serviceVersion string) func() {
+func Configure(flagSets *pflag.FlagSet, serviceType string, serviceVersion string) func() {
+	verbosity := defaultVerbosity
+	verbosityFlag := flagSets.Lookup("v")
+	if verbosityFlag != nil {
+		verbosity, _ = strconv.Atoi(verbosityFlag.Value.String())
+	}
+
 	zapLevel := zapcore.Level(verbosity * -1)
 
 	// using ecszap module to generate new zap.Core for zap.Logger

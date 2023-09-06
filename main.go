@@ -51,9 +51,8 @@ import (
 )
 
 const (
-	serviceType         = "elasticsearch-k8s-metrics-adapter"
-	serviceVersion      = "0.0.0"
-	defaultLogVerbosity = 0
+	serviceType    = "elasticsearch-k8s-metrics-adapter"
+	serviceVersion = "0.0.0"
 
 	elastisearchMetricServerType = "elasticsearch"
 	customMetricServerType       = "custom"
@@ -64,10 +63,6 @@ var (
 )
 
 func main() {
-	flushLogs := log.Configure(defaultLogVerbosity, serviceType, serviceVersion)
-	defer flushLogs()
-	logger = log.ForPackage("main")
-
 	cmd := &ElasticsearchAdapter{}
 	cmd.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(apiserver.Scheme))
 	cmd.OpenAPIConfig.Info.Title = serviceType
@@ -81,6 +76,10 @@ func main() {
 	if err != nil {
 		logErrorAndExit(err, "Unable to parse flags")
 	}
+
+	flushLogs := log.Configure(cmd.Flags(), serviceType, serviceVersion)
+	defer flushLogs()
+	logger = log.ForPackage("main")
 
 	adapterCfg, err := config.Parse()
 	if err != nil {
