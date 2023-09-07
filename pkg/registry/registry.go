@@ -190,7 +190,7 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	if err != nil {
 		return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
 	}
-	r.logger.Info(
+	r.logger.V(1).Info(
 		"Custom metric found", "metric", info.String(),
 		"client_name", metricClient.GetConfiguration().Name,
 		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
@@ -216,7 +216,7 @@ func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (cl
 	if err != nil {
 		return nil, fmt.Errorf("not backend for metric: %v", info.Metric)
 	}
-	r.logger.Info(
+	r.logger.V(1).Info(
 		"External metric found", "metric", info.Metric,
 		"client_name", metricClient.GetConfiguration().Name,
 		"client_host", metricClient.GetConfiguration().ClientConfig.Host,

@@ -78,7 +78,7 @@ func (m *metricJob) refreshMetrics() {
 			return
 		}
 
-		m.logger.Info(
+		m.logger.V(1).Info(
 			"Refreshed custom metrics",
 			"count", len(customMetrics),
 			"client_name", m.GetClient().GetConfiguration().Name,
@@ -102,7 +102,7 @@ func (m *metricJob) refreshMetrics() {
 			return
 		}
 
-		m.logger.Info(
+		m.logger.V(1).Info(
 			"Refreshed external metrics",
 			"metrics_count", len(externalMetrics),
 			"client_name", m.GetClient().GetConfiguration().Name,
@@ -115,7 +115,7 @@ func (m *metricJob) refreshMetrics() {
 	}
 
 	m.syncDone.Do(func() {
-		m.logger.Info(
+		m.logger.V(1).Info(
 			"First sync successful",
 			"client_name", m.GetClient().GetConfiguration().Name,
 			"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
