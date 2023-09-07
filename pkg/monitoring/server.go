@@ -24,9 +24,11 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
@@ -49,8 +51,6 @@ var (
 		Name: "metrics_count",
 		Help: "The current number of metrics served by this metrics server",
 	}, []string{"client", "type"})
-
-	logger = log.ForPackage("monitoring")
 )
 
 type Counters struct {
@@ -79,6 +79,7 @@ func NewServer(metricServers []config.MetricServer, port int, failureThreshold i
 		}
 	}
 	return &Server{
+		logger:           log.ForPackage("monitoring"),
 		lock:             sync.RWMutex{},
 		metricServers:    metricServers,
 		monitoringPort:   port,
@@ -89,6 +90,7 @@ func NewServer(metricServers []config.MetricServer, port int, failureThreshold i
 }
 
 type Server struct {
+	logger           logr.Logger
 	lock             sync.RWMutex
 	metricServers    []config.MetricServer
 	monitoringPort   int
@@ -148,7 +150,7 @@ func (m *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	defer m.lock.RUnlock()
 	for _, server := range m.metricServers {
 
-		l := logger.WithValues("server_name", server.Name)
+		l := m.logger.WithValues("server_name", server.Name)
 		errCtxMsg := "Failed to serve metrics over HTTP"
 		if customMetricsSuccess, hasCustomMetrics := m.clientSuccesses.CustomMetrics[server.Name]; hasCustomMetrics && customMetricsSuccess == 0 {
 			status = http.StatusServiceUnavailable
@@ -179,7 +181,7 @@ func (m *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 	err := writeJSONResponse(writer, status, ClientsHealthResponse{ClientFailures: m.clientFailures, ClientOk: m.clientSuccesses})
 	if err != nil {
-		logger.Error(err, "Failed to write monitoring JSON response")
+		m.logger.Error(err, "Failed to write monitoring JSON response")
 	}
 }
 

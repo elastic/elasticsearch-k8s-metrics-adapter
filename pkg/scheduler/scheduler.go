@@ -20,10 +20,14 @@ package scheduler
 import (
 	"sync"
 
+	"github.com/go-logr/logr"
+
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 )
 
 type Scheduler struct {
+	logger  logr.Logger
 	wg      *sync.WaitGroup
 	sources []Job
 }
@@ -57,6 +61,7 @@ func (s *Scheduler) WithErrorListeners(listeners ...ErrorListener) *Scheduler {
 // NewScheduler creates a new scheduler with an initial set of clients.
 func NewScheduler(clients ...client.Interface) *Scheduler {
 	scheduler := &Scheduler{
+		logger:  log.ForPackage("scheduler"),
 		wg:      &sync.WaitGroup{},
 		sources: make([]Job, len(clients)),
 	}
@@ -80,8 +85,8 @@ func (s *Scheduler) WithClients(clients ...client.Interface) *Scheduler {
 
 // WaitInitialSync blocks until all the
 func (s *Scheduler) WaitInitialSync() *Scheduler {
-	logger.Info("Wait until an initial metric list is grabbed from metric clients", "sources_count", len(s.sources))
+	s.logger.Info("Wait until an initial metric list is grabbed from metric clients", "sources_count", len(s.sources))
 	s.wg.Wait()
-	logger.Info("Initial metric list is grabbed from metric clients", "sources_count", len(s.sources))
+	s.logger.Info("Initial metric list is grabbed from metric clients", "sources_count", len(s.sources))
 	return s
 }

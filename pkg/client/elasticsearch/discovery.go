@@ -24,11 +24,14 @@ import (
 	"strings"
 	"text/template"
 
-	esv8 "github.com/elastic/go-elasticsearch/v8"
-	"github.com/elastic/go-elasticsearch/v8/esapi"
+	"github.com/go-logr/logr"
 	"github.com/itchyny/gojq"
+
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	esv8 "github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/esapi"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
@@ -100,7 +103,7 @@ func (mc *MetricsClient) discoverMetrics() error {
 	}
 
 	for _, metricSet := range mc.metricServerCfg.MetricSets {
-		if err := getMappingFor(metricSet, mc.Client, metricRecorder); err != nil {
+		if err := getMappingFor(mc.logger, metricSet, mc.Client, metricRecorder); err != nil {
 			return err
 		}
 	}
@@ -113,7 +116,7 @@ func (mc *MetricsClient) discoverMetrics() error {
 	return nil
 }
 
-func getMappingFor(metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder) error {
+func getMappingFor(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder) error {
 	req := esapi.IndicesGetMappingRequest{Index: metricSet.Indices}
 	res, err := req.Do(context.Background(), esClient)
 	if err != nil {

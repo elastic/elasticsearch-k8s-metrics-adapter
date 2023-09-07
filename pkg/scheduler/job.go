@@ -21,12 +21,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
+
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 )
-
-var logger = log.ForPackage("scheduler")
 
 type Job interface {
 	start()
@@ -39,12 +39,14 @@ var _ Job = &metricJob{}
 
 func newMetricJob(c client.Interface, wg *sync.WaitGroup) Job {
 	return &metricJob{
-		c:  c,
-		wg: wg,
+		logger: log.ForPackage("job"),
+		c:      c,
+		wg:     wg,
 	}
 }
 
 type metricJob struct {
+	logger         logr.Logger
 	c              client.Interface
 	wg             *sync.WaitGroup
 	syncDone       sync.Once
@@ -67,7 +69,7 @@ func (m *metricJob) refreshMetrics() {
 	if m.GetClient().GetConfiguration().MetricTypes.HasType(config.CustomMetricType) {
 		customMetrics, err := m.c.ListCustomMetricInfos()
 		if err != nil {
-			logger.Error(err,
+			m.logger.Error(err,
 				"Failed to update custom metric list",
 				"client_name", m.GetClient().GetConfiguration().Name,
 				"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
@@ -76,7 +78,7 @@ func (m *metricJob) refreshMetrics() {
 			return
 		}
 
-		logger.Info(
+		m.logger.Info(
 			"Refreshed custom metrics",
 			"count", len(customMetrics),
 			"client_name", m.GetClient().GetConfiguration().Name,
@@ -91,7 +93,7 @@ func (m *metricJob) refreshMetrics() {
 	if m.GetClient().GetConfiguration().MetricTypes.HasType(config.ExternalMetricType) {
 		externalMetrics, err := m.c.ListExternalMetrics()
 		if err != nil {
-			logger.Error(err,
+			m.logger.Error(err,
 				"Failed to update external metric list",
 				"client_name", m.GetClient().GetConfiguration().Name,
 				"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
@@ -100,7 +102,7 @@ func (m *metricJob) refreshMetrics() {
 			return
 		}
 
-		logger.Info(
+		m.logger.Info(
 			"Refreshed external metrics",
 			"metrics_count", len(externalMetrics),
 			"client_name", m.GetClient().GetConfiguration().Name,
@@ -113,7 +115,7 @@ func (m *metricJob) refreshMetrics() {
 	}
 
 	m.syncDone.Do(func() {
-		logger.Info(
+		m.logger.Info(
 			"First sync successful",
 			"client_name", m.GetClient().GetConfiguration().Name,
 			"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,

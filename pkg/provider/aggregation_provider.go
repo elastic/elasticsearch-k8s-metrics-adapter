@@ -20,6 +20,8 @@ package provider
 import (
 	"context"
 
+	"github.com/go-logr/logr"
+
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
@@ -32,10 +34,9 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
 )
 
-var logger = log.ForPackage("provider")
-
 // aggregationProvider is an implementation of provider.MetricsProvider which retrieve metrics from a set of metric clients.
 type aggregationProvider struct {
+	logger   logr.Logger
 	registry *registry.Registry
 	tracer   *apm.Tracer
 }
@@ -46,13 +47,14 @@ func NewAggregationProvider(
 	tracer *apm.Tracer,
 ) provider.MetricsProvider {
 	return &aggregationProvider{
+		logger:   log.ForPackage("provider"),
 		registry: registry,
 		tracer:   tracer,
 	}
 }
 
 func (p *aggregationProvider) GetMetricByName(context context.Context, name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
-	logger.Info("GetMetricByName", "name", name, "info", info, "metricSelector", metricSelector)
+	p.logger.Info("GetMetricByName", "name", name, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetCustomMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -61,7 +63,7 @@ func (p *aggregationProvider) GetMetricByName(context context.Context, name type
 }
 
 func (p *aggregationProvider) GetMetricBySelector(context context.Context, namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
-	logger.Info("GetMetricBySelector", "namespace", namespace, "selector", selector, "info", info, "metricSelector", metricSelector)
+	p.logger.Info("GetMetricBySelector", "namespace", namespace, "selector", selector, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetCustomMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -70,7 +72,7 @@ func (p *aggregationProvider) GetMetricBySelector(context context.Context, names
 }
 
 func (p *aggregationProvider) GetExternalMetric(context context.Context, namespace string, metricSelector labels.Selector, info provider.ExternalMetricInfo) (*external_metrics.ExternalMetricValueList, error) {
-	logger.Info("GetExternalMetric", "namespace", namespace, "info", info, "metricSelector", metricSelector)
+	p.logger.Info("GetExternalMetric", "namespace", namespace, "info", info, "metricSelector", metricSelector)
 	metricClient, err := p.registry.GetExternalMetricClient(info)
 	if err != nil {
 		return nil, err
@@ -79,11 +81,11 @@ func (p *aggregationProvider) GetExternalMetric(context context.Context, namespa
 }
 
 func (p *aggregationProvider) ListAllMetrics() []provider.CustomMetricInfo {
-	logger.Info("ListAllMetrics")
+	p.logger.Info("ListAllMetrics")
 	return p.registry.ListAllCustomMetrics()
 }
 
 func (p *aggregationProvider) ListAllExternalMetrics() []provider.ExternalMetricInfo {
-	logger.Info("ListAllExternalMetrics")
+	p.logger.Info("ListAllExternalMetrics")
 	return p.registry.ListAllExternalMetrics()
 }

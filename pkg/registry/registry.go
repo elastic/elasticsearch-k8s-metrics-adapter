@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/go-logr/logr"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
@@ -31,13 +33,12 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
 )
 
-var logger = log.ForPackage("registry")
-
 // Registry maintains a list of the available metrics and the associated metrics sources.
 // The aim of the registry is to cache the metrics lists as they can be expensive to retrieve and compute from
 // the various sources.
 type Registry struct {
-	lock sync.RWMutex
+	logger logr.Logger
+	lock   sync.RWMutex
 
 	customMetrics   map[provider.CustomMetricInfo]*metricClients
 	externalMetrics map[provider.ExternalMetricInfo]*metricClients
@@ -45,6 +46,7 @@ type Registry struct {
 
 func NewRegistry() *Registry {
 	return &Registry{
+		logger:          log.ForPackage("registry"),
 		lock:            sync.RWMutex{},
 		customMetrics:   make(map[provider.CustomMetricInfo]*metricClients),
 		externalMetrics: make(map[provider.ExternalMetricInfo]*metricClients),
@@ -175,7 +177,7 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	var metricClients *metricClients
 	var ok bool
 	if metricClients, ok = r.customMetrics[info]; !ok {
-		logger.Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
+		r.logger.Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
 		return nil, &errors.StatusError{
 			ErrStatus: metav1.Status{
 				Status:  metav1.StatusFailure,
@@ -188,7 +190,7 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	if err != nil {
 		return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
 	}
-	logger.Info(
+	r.logger.Info(
 		"Custom metric found", "metric", info.String(),
 		"client_name", metricClient.GetConfiguration().Name,
 		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
@@ -214,7 +216,7 @@ func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (cl
 	if err != nil {
 		return nil, fmt.Errorf("not backend for metric: %v", info.Metric)
 	}
-	logger.Info(
+	r.logger.Info(
 		"External metric found", "metric", info.Metric,
 		"client_name", metricClient.GetConfiguration().Name,
 		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
@@ -231,7 +233,7 @@ func (r *Registry) ListAllCustomMetrics() []provider.CustomMetricInfo {
 		infos[count] = k
 		count++
 	}
-	logger.V(1).Info("custom metrics served by the adapter", "count", len(infos))
+	r.logger.V(1).Info("Custom metrics served by the adapter", "count", len(infos))
 	return infos
 }
 
@@ -244,6 +246,6 @@ func (r *Registry) ListAllExternalMetrics() []provider.ExternalMetricInfo {
 		infos[count] = k
 		count++
 	}
-	logger.V(1).Info("external metrics served by the adapter", "count", len(infos))
+	r.logger.V(1).Info("External metrics served by the adapter", "count", len(infos))
 	return infos
 }

@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-logr/logr"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -44,14 +46,13 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 )
 
-var logger = log.ForPackage("custom_api")
-
 type metricsClientProvider struct {
 	baseConfig *rest.Config
 	mapper     meta.RESTMapper
 }
 
 type metricsClient struct {
+	logger                           logr.Logger
 	metricServerCfg                  config.MetricServer
 	customMetricsAvailableAPIsGetter cmClient.AvailableAPIsGetter
 	customMetricsClient              cmClient.CustomMetricsClient
@@ -85,7 +86,7 @@ func (mc *metricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 	for _, r := range resources.APIResources {
 		parts := strings.SplitN(r.Name, "/", 2)
 		if len(parts) != 2 {
-			logger.Error(errors.New("provider returned a malformed metrics"), "Fail to list custom metrics", "provider_name", mc.metricServerCfg.Name, "metric_name", r.Name)
+			mc.logger.Error(errors.New("provider returned a malformed metrics"), "Fail to list custom metrics", "provider_name", mc.metricServerCfg.Name, "metric_name", r.Name)
 			continue
 		}
 		info := provider.CustomMetricInfo{
@@ -149,7 +150,7 @@ func (mc *metricsClient) GetMetricBySelector(namespace string, selector labels.S
 	if err != nil {
 		return nil, fmt.Errorf("failed to singularize %s: %v", info.GroupResource.Resource, err)
 	}
-	logger.V(1).Info("GetMetricBySelector", "metric_info", info.String())
+	mc.logger.V(1).Info("GetMetricBySelector", "metric_info", info.String())
 	mc.rwLock.Lock()
 	defer mc.rwLock.Unlock()
 	metricName, ok := mc.customMetricNamer.Get(info.Metric)
@@ -271,6 +272,7 @@ func (mcp metricsClientProvider) NewClient(
 	}
 
 	return &metricsClient{
+		logger:                           log.ForPackage("custom_api"),
 		metricServerCfg:                  metricServerCfg,
 		customMetricsAvailableAPIsGetter: customMetricsAvailableAPIsGetter,
 		customMetricsClient:              customMetricsClient,
