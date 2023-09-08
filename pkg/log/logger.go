@@ -41,6 +41,9 @@ var (
 	logger logr.Logger
 )
 
+// Configure configures the main logger of this go program using the ECS support for uber-go/zap logger.
+// go-logr logging levels convention is followed (reversed compared to zap logging levels): -1=error, 0=info, 1=debug.
+// All k8s client logging is only enabled at the debug log level, it is disabled by default at lower logging levels.
 func Configure(flagSets *pflag.FlagSet, serviceType string, serviceVersion string) func() {
 	verbosity := defaultVerbosity
 	verbosityFlag := flagSets.Lookup("v")
@@ -70,8 +73,13 @@ func Configure(flagSets *pflag.FlagSet, serviceType string, serviceVersion strin
 	// using zapr module to generate logr.Logger
 	logger = zapr.NewLogger(zapLogger)
 
-	// For k8s client logging.
-	klog.SetLogger(logger.WithName("k8s"))
+	// enable k8s client logging only at debug log level
+	if verbosity > 0 {
+		klog.SetLogger(logger.WithName("k8s"))
+	} else {
+		// muted at info/error log level
+		klog.SetLogger(zapr.NewLogger(zap.New(nil)))
+	}
 
 	// Propagate the set log level to klog
 	flagset := flag.NewFlagSet("", flag.ContinueOnError)
