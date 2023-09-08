@@ -19,12 +19,10 @@ package config
 
 import (
 	"errors"
-	"io/ioutil"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
 )
 
 type HTTPClientConfig struct {
@@ -60,17 +58,6 @@ type TLSClientConfig struct {
 
 	// Trusted root certificates for server
 	CAFile string `yaml:"caFile,omitempty"`
-}
-
-func readFileOrDie(filename string) []byte {
-	if filename == "" {
-		return nil
-	}
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		klog.Fatalf("unable to retrieve data from file: %s", err)
-	}
-	return data
 }
 
 // NewRestClientConfig converts the config provided by the user into a restclient.Config

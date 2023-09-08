@@ -18,9 +18,12 @@
 package custom_api
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/go-logr/logr"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,19 +33,17 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
-	"k8s.io/metrics/pkg/apis/external_metrics"
-	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
-
-	"k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
 	customMetricsAPI "k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
+	"k8s.io/metrics/pkg/apis/external_metrics"
 	externalMetricsAPI "k8s.io/metrics/pkg/apis/external_metrics/v1beta1"
 	cmClient "k8s.io/metrics/pkg/client/custom_metrics"
 	emClient "k8s.io/metrics/pkg/client/external_metrics"
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 )
 
 type metricsClientProvider struct {
@@ -51,6 +52,7 @@ type metricsClientProvider struct {
 }
 
 type metricsClient struct {
+	logger                           logr.Logger
 	metricServerCfg                  config.MetricServer
 	customMetricsAvailableAPIsGetter cmClient.AvailableAPIsGetter
 	customMetricsClient              cmClient.CustomMetricsClient
@@ -79,12 +81,12 @@ func (mc *metricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 	metricInfos := make(map[provider.CustomMetricInfo]struct{})
 	namer, err := config.NewNamer(mc.metricServerCfg.Rename)
 	if err != nil {
-		klog.Fatalf("%s: failed to create customMetricNamer: %v", mc.GetConfiguration().Name, err)
+		return nil, fmt.Errorf("%s: failed to create customMetricNamer: %v", mc.GetConfiguration().Name, err)
 	}
 	for _, r := range resources.APIResources {
 		parts := strings.SplitN(r.Name, "/", 2)
 		if len(parts) != 2 {
-			klog.Warningf("provider %s returned a malformed metrics with name %s", mc.metricServerCfg.ClientConfig.Host, r.Name)
+			mc.logger.Error(errors.New("provider returned a malformed metrics"), "Fail to list custom metrics", "provider_name", mc.metricServerCfg.Name, "metric_name", r.Name)
 			continue
 		}
 		info := provider.CustomMetricInfo{
@@ -103,7 +105,7 @@ func (mc *metricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 func (mc *metricsClient) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, selector labels.Selector) (*custom_metrics.MetricValue, error) {
 	mc.rwLock.Lock()
 	defer mc.rwLock.Unlock()
-	var object *v1beta2.MetricValue
+	var object *customMetricsAPI.MetricValue
 	var err error
 	metricName, ok := mc.customMetricNamer.Get(info.Metric)
 	if !ok {
@@ -142,13 +144,13 @@ func (mc *metricsClient) GetMetricByName(name types.NamespacedName, info provide
 }
 
 func (mc *metricsClient) GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
-	var objects *v1beta2.MetricValueList
+	var objects *customMetricsAPI.MetricValueList
 	var err error
 	kind, err := mc.mapper.ResourceSingularizer(info.GroupResource.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("failed to singularize %s: %v", info.GroupResource.Resource, err)
 	}
-	klog.Infof("custom metric info: %#v", info)
+	mc.logger.V(1).Info("GetMetricBySelector", "metric_info", info.String())
 	mc.rwLock.Lock()
 	defer mc.rwLock.Unlock()
 	metricName, ok := mc.customMetricNamer.Get(info.Metric)
@@ -270,6 +272,7 @@ func (mcp metricsClientProvider) NewClient(
 	}
 
 	return &metricsClient{
+		logger:                           log.ForPackage("custom_api"),
 		metricServerCfg:                  metricServerCfg,
 		customMetricsAvailableAPIsGetter: customMetricsAvailableAPIsGetter,
 		customMetricsClient:              customMetricsClient,

@@ -28,12 +28,10 @@ import (
 
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
-	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/tracing"
@@ -131,7 +129,7 @@ func getMetricForPod(
 
 	var r map[string]interface{}
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		log.Fatalf("Error parsing the response body: %s", err)
+		return timestampedMetric{}, fmt.Errorf("error parsing the response body: %s", err)
 	}
 
 	var value float64
@@ -291,30 +289,34 @@ func getMetricDocument(
 	metricSelector labels.Selector,
 	doc map[string]interface{},
 ) (map[string]interface{}, error) {
-	metaHits, hasMetaHits := doc["hits"]
-	if !hasMetaHits {
-		klog.Errorf("no hits in %v", metaHits)
+	metaHits, ok := doc["hits"]
+	if !ok {
 		return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, name.Name, metricSelector)
 	}
 
-	var documents interface{}
-	if hits, ok := metaHits.(map[string]interface{}); ok {
-		documents, _ = hits["hits"]
-	} else {
+	hits, ok := metaHits.(map[string]interface{})
+	if !ok {
 		return nil, fmt.Errorf("cannot convert hits: %v", metaHits)
 	}
 
-	if documents, ok := documents.([]interface{}); ok {
-		if len(documents) == 0 {
-			klog.Errorf("no documents in %v", doc)
-			return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, name.Name, metricSelector)
-		}
-		document := documents[0]
-		if result, ok := document.(map[string]interface{}); ok {
-			return result, nil
-		}
+	docs, ok := hits["hits"]
+	if !ok {
+		return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, name.Name, metricSelector)
+
+	}
+	documents, ok := docs.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("cannot convert docs: %v", docs)
+	}
+	if len(documents) == 0 {
+		return nil, provider.NewMetricNotFoundForSelectorError(info.GroupResource, info.Metric, name.Name, metricSelector)
 	}
 
-	return nil, fmt.Errorf("no hits in %v", metaHits)
+	document := documents[0]
+	result, ok := document.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("cannot convert document: %v", document)
+	}
 
+	return result, nil
 }

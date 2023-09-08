@@ -18,13 +18,13 @@
 package config
 
 import (
-	"io/ioutil"
+	"fmt"
+	"os"
 	"regexp"
 	"text/template"
 
 	"github.com/itchyny/gojq"
 	"gopkg.in/yaml.v3"
-	"k8s.io/klog/v2"
 )
 
 const configPath = "config/config.yml"
@@ -132,9 +132,8 @@ type GroupResource struct {
 	Resource string `yaml:"resource"`
 }
 
-func Default() (*Config, error) {
-	klog.Infof("Reading adapter configuration from %s", configPath)
-	config, err := ioutil.ReadFile(configPath)
+func Parse() (*Config, error) {
+	config, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
 	}
@@ -155,35 +154,38 @@ func From(source []byte) (*Config, error) {
 	}
 
 	// Ensure that configuration is valid and compile the patterns.
-	checkOrDie(config)
+	if err := validate(config); err != nil {
+		return nil, err
+	}
 	return config, nil
 }
 
-func checkOrDie(config *Config) {
+func validate(config *Config) error {
 	for i := range config.MetricServers {
 		server := config.MetricServers[i]
 		if server.Rename != nil {
 			if len(server.Rename.Matches) == 0 || len(server.Rename.As) == 0 {
-				klog.Fatalf("%s: rename directive must contain both \"matches\" and \"as\" fields", server.Name)
+				return fmt.Errorf("%s: rename directive must contain both \"matches\" and \"as\" fields", server.Name)
 			}
 		}
 		if server.ServerType == "" {
-			klog.Fatalf("%s: server type is not set", server.Name)
+			return fmt.Errorf("%s: server type is not set", server.Name)
 		}
 		switch server.ServerType {
 		case "custom":
 			if !server.ClientConfig.IsDefined() {
-				klog.Fatalf("%s: HTTP client configuration is not defined in upstream custom metric server", server.Name)
+				return fmt.Errorf("%s: HTTP client configuration is not defined in upstream custom metric server", server.Name)
 			}
 			if len(server.MetricSets) > 0 {
-				klog.Fatalf("%s: metricSets is not allowed in upstream custom metric server", server.Name)
+				return fmt.Errorf("%s: metricSets is not allowed in upstream custom metric server", server.Name)
 			}
 		case "elasticsearch":
 			if len(server.MetricSets) == 0 {
-				klog.Warningf("%s: no metricSets defined", server.Name)
+				return fmt.Errorf("%s: no metricSets defined", server.Name)
+
 			}
 			if !server.ClientConfig.IsDefined() {
-				klog.Fatalf("%s: Elasticsearch requires clientConfig to be set", server.Name)
+				return fmt.Errorf("%s: Elasticsearch requires clientConfig to be set", server.Name)
 			}
 			// Compile the regular expressions
 			for i := range server.MetricSets {
@@ -198,15 +200,15 @@ func checkOrDie(config *Config) {
 					for k, pattern := range field.Patterns {
 						compiledPattern, err := regexp.Compile(pattern)
 						if err != nil {
-							klog.Fatalf("%s: error while compiling regular expression %s: %v", server.Name, pattern, err)
+							return fmt.Errorf("%s: error while compiling regular expression %s: %v", server.Name, pattern, err)
 						}
 						metricSet.Fields[j].compiledPatterns[k] = *compiledPattern
 					}
 				}
 			}
 		default:
-			klog.Fatalf("%s: unknown metric server type: %s", server.Name, server.ServerType)
+			return fmt.Errorf("%s: unknown metric server type: %s", server.Name, server.ServerType)
 		}
-
 	}
+	return nil
 }
