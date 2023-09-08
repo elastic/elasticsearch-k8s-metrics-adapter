@@ -177,7 +177,7 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	var metricClients *metricClients
 	var ok bool
 	if metricClients, ok = r.customMetrics[info]; !ok {
-		r.logger.Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
+		r.logger.V(1).Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
 		return nil, &errors.StatusError{
 			ErrStatus: metav1.Status{
 				Status:  metav1.StatusFailure,
