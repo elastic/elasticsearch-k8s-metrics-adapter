@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    {{- include "elasticsearch-metrics-apiserver.deploymentLabels" . | nindent 4 }}
+    {{- include "elasticsearch-metrics-apiserver.combinedLabels" . | nindent 4 }}
   name: elasticsearch-metrics-apiserver
 spec:
   replicas: {{ .Values.replicaCount }}
