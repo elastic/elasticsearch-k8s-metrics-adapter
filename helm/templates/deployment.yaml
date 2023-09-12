@@ -8,7 +8,7 @@ spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "elasticsearch-metrics-apiserver.deploymentLabels" . | nindent 6 }}
+      app: elasticsearch-metrics-apiserver
   template:
     metadata:
       labels:
