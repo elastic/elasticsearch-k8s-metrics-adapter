@@ -70,6 +70,12 @@ spec:
       tolerations:
         {{- toYaml . | nindent 12 }}
       {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{ toYaml . | nindent 8 }}
+      {{- end }}
       imagePullSecrets:
         - name: elastic-docker-registry
       volumes:
