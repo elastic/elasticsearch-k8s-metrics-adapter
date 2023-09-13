@@ -19,7 +19,10 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+
+	"github.com/go-logr/logr"
 
 	// Load all auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -29,50 +32,120 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/component-base/logs"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver"
 	basecmd "sigs.k8s.io/custom-metrics-apiserver/pkg/cmd"
-	cm_provider "sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	"go.elastic.co/apm"
 
 	generatedopenapi "github.com/elastic/elasticsearch-k8s-metrics-adapter/generated/openapi"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/custom_api"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/elasticsearch"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/monitoring"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/provider"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/tracing"
-	"go.elastic.co/apm"
 )
+
+const (
+	serviceType    = "elasticsearch-k8s-metrics-adapter"
+	serviceVersion = "0.0.0"
+
+	elastisearchMetricServerType = "elasticsearch"
+	customMetricServerType       = "custom"
+)
+
+var (
+	logger logr.Logger
+)
+
+func main() {
+	cmd := &ElasticsearchAdapter{}
+	cmd.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(apiserver.Scheme))
+	cmd.OpenAPIConfig.Info.Title = serviceType
+	cmd.OpenAPIConfig.Info.Version = serviceVersion
+
+	logs.AddFlags(cmd.Flags())
+	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
+	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
+	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
+	err := cmd.Flags().Parse(os.Args)
+	if err != nil {
+		logErrorAndExit(err, "Unable to parse flags")
+	}
+
+	flushLogs := log.Configure(cmd.Flags(), serviceType, serviceVersion)
+	defer flushLogs()
+	logger = log.ForPackage("main")
+
+	adapterCfg, err := config.Parse()
+	if err != nil {
+		logErrorAndExit(err, "Unable to parse adapter configuration")
+	}
+
+	logger.Info("Starting monitoring server...")
+	monitoringServer := monitoring.NewServer(adapterCfg.MetricServers, cmd.MonitoringPort, adapterCfg.ReadinessProbe.FailureThreshold)
+	go monitoringServer.Start()
+
+	apmTracer, err := apm.NewTracer(serviceType, serviceVersion)
+	if err != nil {
+		logErrorAndExit(err, "Unable to create APM tracer")
+	}
+	apmTracer.SetLogger(&tracing.Logger{})
+
+	metricsClients, err := cmd.newMetricsClients(adapterCfg, apmTracer)
+	if err != nil {
+		logErrorAndExit(err, "Unable to create metrics provider")
+	}
+
+	scheduler := scheduler.NewScheduler(metricsClients...)
+	metricsRegistry := registry.NewRegistry()
+	scheduler.
+		WithMetricListeners(monitoringServer, metricsRegistry).
+		WithErrorListeners(monitoringServer).
+		Start().
+		WaitInitialSync()
+	aggProvider := provider.NewAggregationProvider(metricsRegistry, apmTracer)
+
+	cmd.WithCustomMetrics(aggProvider)
+	cmd.WithExternalMetrics(aggProvider)
+	if cmd.Insecure {
+		cmd.Authentication = nil
+		cmd.Authorization = nil
+	}
+
+	logger.Info("Starting elastic k8s metrics adapter...")
+	if err := cmd.Run(wait.NeverStop); err != nil {
+		logErrorAndExit(err, "Unable to run elastic k8s metrics adapter")
+	}
+}
 
 type ElasticsearchAdapter struct {
 	basecmd.AdapterBase
-	monitoringServer *monitoring.Server
 
 	Insecure                 bool
 	PrometheusMetricsEnabled bool
 	MonitoringPort           int
 }
 
-func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_provider.MetricsProvider {
+func (a *ElasticsearchAdapter) newMetricsClients(adapterCfg *config.Config, tracer *apm.Tracer) ([]client.Interface, error) {
 	dynamicClient, err := a.DynamicClient()
 	if err != nil {
-		klog.Fatalf("unable to construct dynamic dynamicClient: %v", err)
+		return nil, fmt.Errorf("unable to construct dynamic dynamicClient: %w", err)
 	}
 
 	mapper, err := a.RESTMapper()
 	if err != nil {
-		klog.Fatalf("unable to construct dynamicClient REST mapper: %v", err)
+		return nil, fmt.Errorf("unable to construct dynamicClient REST mapper: %w", err)
 	}
-
-	tracer := createTracer()
 
 	var clients []client.Interface
 	for _, clientCfg := range adapterCfg.MetricServers {
 		switch clientCfg.ServerType {
-		case "elasticsearch":
+		case elastisearchMetricServerType:
 			esMetricClient, err := elasticsearch.NewElasticsearchClient(
 				clientCfg,
 				dynamicClient,
@@ -80,89 +153,31 @@ func (a *ElasticsearchAdapter) makeProviderOrDie(adapterCfg *config.Config) cm_p
 				tracer,
 			)
 			if err != nil {
-				klog.Fatalf("unable to construct Elasticsearch dynamicClient: %v", err)
+				return nil, fmt.Errorf("unable to construct Elasticsearch dynamicClient: %w", err)
 			}
 			clients = append(clients, esMetricClient)
-		case "custom":
+		case customMetricServerType:
 			kubeClientCfg, err := a.ClientConfig()
 			if err != nil {
-				klog.Fatalf("unable to construct Kubernetes dynamicClient config: %v", err)
+				return nil, fmt.Errorf("unable to construct Kubernetes dynamicClient config: %w", err)
 			}
 			kubeClient, err := kubernetes.NewForConfig(kubeClientCfg)
 			if err != nil {
-				klog.Fatalf("unable to construct Kubernetes dynamicClient: %v", err)
+				return nil, fmt.Errorf("unable to construct Kubernetes dynamicClient: %w", err)
 			}
 			metricApiClient, err := custom_api.NewMetricApiClientProvider(kubeClientCfg, mapper).NewClient(kubeClient, clientCfg)
 			if err != nil {
-				klog.Fatalf("unable to construct Kubernetes custom metric API dynamicClient: %v", err)
+				return nil, fmt.Errorf("unable to construct Kubernetes custom metric API dynamicClient: %w", err)
 			}
 			clients = append(clients, metricApiClient)
 		}
 
 	}
 
-	scheduler := scheduler.NewScheduler(clients...)
-	r := registry.NewRegistry()
-	scheduler.
-		WithMetricListeners(a.monitoringServer, r).
-		WithErrorListeners(a.monitoringServer).
-		Start().
-		WaitInitialSync()
-	return provider.NewAggregationProvider(r, tracer)
+	return clients, nil
 }
 
-func createTracer() *apm.Tracer {
-	if tracing.IsEnabled() {
-		t, err := apm.NewTracer("elasticsearch-metrics-adapter", "0.0.1")
-		if err != nil {
-			// don't fail the application because tracing fails
-			klog.Errorf("failed to created tracer: %s ", err)
-			return nil
-		}
-		t.SetLogger(&tracing.Logger{})
-		return t
-	}
-	return nil
-}
-
-func main() {
-	logs.InitLogs()
-	defer logs.FlushLogs()
-
-	cmd := &ElasticsearchAdapter{}
-
-	cmd.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(apiserver.Scheme))
-	cmd.OpenAPIConfig.Info.Title = "elasticsearch-k8s-metrics-adapter"
-	cmd.OpenAPIConfig.Info.Version = "0.1.0"
-	logs.AddFlags(cmd.Flags())
-	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
-	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
-	cmd.Flags().BoolVar(&cmd.PrometheusMetricsEnabled, "enable-metrics", false, "enable Prometheus metrics endpoint /metrics on the monitoring port")
-	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
-	err := cmd.Flags().Parse(os.Args)
-	if err != nil {
-		klog.Fatalf("unable to parse flags: %v", err)
-	}
-
-	// Parse the adapter configuration
-	adapterCfg, err := config.Default()
-	if err != nil {
-		klog.Fatalf("unable to parse adapter configuration: %v", err)
-	}
-
-	cmd.monitoringServer = monitoring.NewServer(adapterCfg, cmd.MonitoringPort, cmd.PrometheusMetricsEnabled)
-	go cmd.monitoringServer.Start()
-
-	elasticsearchProvider := cmd.makeProviderOrDie(adapterCfg)
-	cmd.WithCustomMetrics(elasticsearchProvider)
-	cmd.WithExternalMetrics(elasticsearchProvider)
-	if cmd.Insecure {
-		cmd.Authentication = nil
-		cmd.Authorization = nil
-	}
-
-	klog.Info("starting Elasticsearch adapter...")
-	if err := cmd.Run(wait.NeverStop); err != nil {
-		klog.Fatalf("unable to run Elasticsearch custom metrics adapter: %v", err)
-	}
+func logErrorAndExit(err error, msg string) {
+	logger.Error(err, msg)
+	os.Exit(1)
 }

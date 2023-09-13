@@ -23,7 +23,7 @@ resources:
 
 runAsUser: "1111"
 
-logVerbosity: "1"
+logVerbosity: "0"
 
 env: []
 

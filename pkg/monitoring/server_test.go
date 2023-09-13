@@ -34,23 +34,19 @@ import (
 )
 
 func TestServer_ServeHTTP(t *testing.T) {
-
-	server := NewServer(&config.Config{
-		ReadinessProbe: config.ReadinessProbe{},
-		MetricServers: []config.MetricServer{
-			{
-				Name: "metric_server1",
-			},
-			{
-				Name:        "metric_server2",
-				MetricTypes: &config.MetricTypes{config.CustomMetricType},
-			},
-			{
-				Name:        "metric_server3",
-				MetricTypes: &config.MetricTypes{config.ExternalMetricType},
-			},
+	server := NewServer([]config.MetricServer{
+		{
+			Name: "metric_server1",
 		},
-	}, 0, false)
+		{
+			Name:        "metric_server2",
+			MetricTypes: &config.MetricTypes{config.CustomMetricType},
+		},
+		{
+			Name:        "metric_server3",
+			MetricTypes: &config.MetricTypes{config.ExternalMetricType},
+		},
+	}, 1234, 0)
 
 	// Initial status: not ready
 	recorder := httptest.NewRecorder()

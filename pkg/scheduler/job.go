@@ -21,11 +21,11 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/klog/v2"
-	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+	"github.com/go-logr/logr"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 )
 
 type Job interface {
@@ -39,20 +39,19 @@ var _ Job = &metricJob{}
 
 func newMetricJob(c client.Interface, wg *sync.WaitGroup) Job {
 	return &metricJob{
-		c:  c,
-		wg: wg,
+		logger: log.ForPackage("job"),
+		c:      c,
+		wg:     wg,
 	}
 }
 
 type metricJob struct {
+	logger         logr.Logger
 	c              client.Interface
 	wg             *sync.WaitGroup
 	syncDone       sync.Once
 	listeners      []MetricListener
 	errorListeners []ErrorListener
-
-	previousCustomMetrics   map[provider.CustomMetricInfo]struct{}
-	previousExternalMetrics map[provider.ExternalMetricInfo]struct{}
 }
 
 func (m *metricJob) start() {
@@ -70,21 +69,20 @@ func (m *metricJob) refreshMetrics() {
 	if m.GetClient().GetConfiguration().MetricTypes.HasType(config.CustomMetricType) {
 		customMetrics, err := m.c.ListCustomMetricInfos()
 		if err != nil {
-			klog.Errorf(
-				"Failed to update custom metric list from  %s / %s : %v",
-				m.GetClient().GetConfiguration().Name,
-				m.GetClient().GetConfiguration().ClientConfig.Host,
-				err,
+			m.logger.Error(err,
+				"Failed to update custom metric list",
+				"client_name", m.GetClient().GetConfiguration().Name,
+				"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
 			)
 			m.publishError(config.CustomMetricType, err)
 			return
 		}
 
-		klog.V(1).Infof(
-			"%d custom metrics from %s / %s",
-			len(customMetrics),
-			m.GetClient().GetConfiguration().Name,
-			m.GetClient().GetConfiguration().ClientConfig.Host,
+		m.logger.V(1).Info(
+			"Refreshed custom metrics",
+			"count", len(customMetrics),
+			"client_name", m.GetClient().GetConfiguration().Name,
+			"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
 		)
 
 		for _, listener := range m.listeners {
@@ -95,21 +93,20 @@ func (m *metricJob) refreshMetrics() {
 	if m.GetClient().GetConfiguration().MetricTypes.HasType(config.ExternalMetricType) {
 		externalMetrics, err := m.c.ListExternalMetrics()
 		if err != nil {
-			klog.Errorf(
-				"Failed to update external metric list from  %s / %s : %v",
-				m.GetClient().GetConfiguration().Name,
-				m.GetClient().GetConfiguration().ClientConfig.Host,
-				err,
+			m.logger.Error(err,
+				"Failed to update external metric list",
+				"client_name", m.GetClient().GetConfiguration().Name,
+				"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
 			)
 			m.publishError(config.ExternalMetricType, err)
 			return
 		}
 
-		klog.V(1).Infof(
-			"%d external metrics from %s / %s",
-			len(externalMetrics),
-			m.GetClient().GetConfiguration().Name,
-			m.GetClient().GetConfiguration().ClientConfig.Host,
+		m.logger.V(1).Info(
+			"Refreshed external metrics",
+			"metrics_count", len(externalMetrics),
+			"client_name", m.GetClient().GetConfiguration().Name,
+			"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
 		)
 
 		for _, listener := range m.listeners {
@@ -118,10 +115,10 @@ func (m *metricJob) refreshMetrics() {
 	}
 
 	m.syncDone.Do(func() {
-		klog.V(1).Infof(
-			"First sync successful from %s / %s",
-			m.GetClient().GetConfiguration().Name,
-			m.GetClient().GetConfiguration().ClientConfig.Host,
+		m.logger.V(1).Info(
+			"First sync successful",
+			"client_name", m.GetClient().GetConfiguration().Name,
+			"client_host", m.GetClient().GetConfiguration().ClientConfig.Host,
 		)
 		m.wg.Done()
 	})

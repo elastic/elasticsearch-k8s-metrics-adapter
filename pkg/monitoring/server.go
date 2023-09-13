@@ -19,18 +19,21 @@ package monitoring
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"k8s.io/klog/v2"
+
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 )
 
 const defaultFailureThreshold = 3
@@ -62,13 +65,12 @@ func NewCounters() *Counters {
 	}
 }
 
-func NewServer(adapterCfg *config.Config, port int, enablePrometheusMetrics bool) *Server {
-	failureThreshold := adapterCfg.ReadinessProbe.FailureThreshold
+func NewServer(metricServers []config.MetricServer, port int, failureThreshold int) *Server {
 	if failureThreshold == 0 {
 		failureThreshold = defaultFailureThreshold
 	}
 	clientSuccesses := NewCounters()
-	for _, clientCfg := range adapterCfg.MetricServers {
+	for _, clientCfg := range metricServers {
 		if clientCfg.MetricTypes.HasType(config.CustomMetricType) {
 			clientSuccesses.CustomMetrics[clientCfg.Name] = 0
 		}
@@ -77,24 +79,24 @@ func NewServer(adapterCfg *config.Config, port int, enablePrometheusMetrics bool
 		}
 	}
 	return &Server{
-		lock:                    sync.RWMutex{},
-		adapterCfg:              adapterCfg,
-		monitoringPort:          port,
-		enablePrometheusMetrics: enablePrometheusMetrics,
-		clientFailures:          NewCounters(),
-		clientSuccesses:         clientSuccesses,
-		failureThreshold:        failureThreshold,
+		logger:           log.ForPackage("monitoring"),
+		lock:             sync.RWMutex{},
+		metricServers:    metricServers,
+		monitoringPort:   port,
+		clientFailures:   NewCounters(),
+		clientSuccesses:  clientSuccesses,
+		failureThreshold: failureThreshold,
 	}
 }
 
 type Server struct {
-	lock                    sync.RWMutex
-	adapterCfg              *config.Config
-	monitoringPort          int
-	failureThreshold        int
-	enablePrometheusMetrics bool
-	clientFailures          *Counters
-	clientSuccesses         *Counters
+	logger           logr.Logger
+	lock             sync.RWMutex
+	metricServers    []config.MetricServer
+	monitoringPort   int
+	failureThreshold int
+	clientFailures   *Counters
+	clientSuccesses  *Counters
 }
 
 func (m *Server) OnError(c client.Interface, metricType config.MetricType, err error) {
@@ -146,34 +148,40 @@ func (m *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	status := http.StatusOK
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	for _, server := range m.adapterCfg.MetricServers {
+	for _, server := range m.metricServers {
+
+		l := m.logger.WithValues("server_name", server.Name)
+		errCtxMsg := "Failed to serve metrics over HTTP"
 		if customMetricsSuccess, hasCustomMetrics := m.clientSuccesses.CustomMetrics[server.Name]; hasCustomMetrics && customMetricsSuccess == 0 {
 			status = http.StatusServiceUnavailable
-			klog.Errorf("client %s has not retrieved an initial set of custom metrics yet", server.Name)
+			l.Error(errors.New("client has not retrieved an initial set of custom metrics yet"), errCtxMsg)
 			break
 		}
 
 		if externalMetricsSuccess, hasExternalMetrics := m.clientSuccesses.ExternalMetrics[server.Name]; hasExternalMetrics && externalMetricsSuccess == 0 {
 			status = http.StatusServiceUnavailable
-			klog.Errorf("client %s has not retrieved an initial set of external metrics yet", server.Name)
+			l.Error(errors.New("client has not retrieved an initial set of external metrics yet"), errCtxMsg)
 			break
 		}
 
-		if m.clientFailures.CustomMetrics[server.Name] >= m.failureThreshold {
+		failures := m.clientFailures.CustomMetrics[server.Name]
+		if failures >= m.failureThreshold {
 			status = http.StatusServiceUnavailable
-			klog.Errorf("client %s got %d consecutive failures while retrieving custom metrics", server.Name, m.clientFailures.CustomMetrics[server.Name])
+			l.Error(fmt.Errorf("client got %d consecutive failures while retrieving custom metrics", failures), errCtxMsg)
 			break
 		}
 
-		if m.clientFailures.ExternalMetrics[server.Name] >= m.failureThreshold {
+		failures = m.clientFailures.ExternalMetrics[server.Name]
+		if failures >= m.failureThreshold {
 			status = http.StatusServiceUnavailable
-			klog.Errorf("client %s got %d consecutive failures while retrieving external metrics", server.Name, m.clientFailures.ExternalMetrics[server.Name])
+			l.Error(fmt.Errorf("client got %d consecutive failures while retrieving external metrics", failures), errCtxMsg)
 			break
 		}
 	}
+
 	err := writeJSONResponse(writer, status, ClientsHealthResponse{ClientFailures: m.clientFailures, ClientOk: m.clientSuccesses})
 	if err != nil {
-		klog.Errorf("Failed to write monitoring JSON response: %v", err)
+		m.logger.Error(err, "Failed to write monitoring JSON response")
 	}
 }
 
