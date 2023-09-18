@@ -1,6 +1,9 @@
 # Labels added to the pod
 podLabels: {}
 
+# Additional labels added to pods, deployment, and pdb.
+additionalLabels: {}
+
 # Annotations added to the pod
 podAnnotations: {}
 

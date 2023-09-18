@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: elasticsearch-metrics-apiserver
+    {{- include "elasticsearch-metrics-apiserver.combinedLabels" . | nindent 4 }}
   name: elasticsearch-metrics-apiserver
 spec:
   replicas: {{ .Values.replicaCount }}
@@ -12,10 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        app: elasticsearch-metrics-apiserver
-        {{- with .Values.podLabels }}
-        {{- toYaml . | trim | nindent 8 }}
-        {{- end }}
+        {{- include "elasticsearch-metrics-apiserver.combinedLabels" . | nindent 8 }}
       annotations:
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
