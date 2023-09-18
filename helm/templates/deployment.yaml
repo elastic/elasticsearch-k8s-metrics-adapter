@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "elasticsearch-metrics-apiserver.combinedLabels" . | nindent 8 }}
+        {{- include "elasticsearch-metrics-apiserver.combinedPodLabels" . | nindent 8 }}
       annotations:
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
