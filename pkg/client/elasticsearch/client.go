@@ -21,29 +21,33 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"sync"
 
-	esv8 "github.com/elastic/go-elasticsearch/v8"
-	"go.elastic.co/apm"
-	"go.elastic.co/apm/module/apmelasticsearch"
+	"github.com/go-logr/logr"
+
 	apierr "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
 	"k8s.io/metrics/pkg/apis/external_metrics"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider/helpers"
 
+	esv8 "github.com/elastic/go-elasticsearch/v8"
+	"go.elastic.co/apm"
+	"go.elastic.co/apm/module/apmelasticsearch"
+
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/tracing"
 )
 
@@ -98,6 +102,7 @@ type MetricsClient struct {
 	mapper apimeta.RESTMapper
 
 	tracer *apm.Tracer
+	logger logr.Logger
 }
 
 func (mc *MetricsClient) GetConfiguration() config.MetricServer {
@@ -110,7 +115,9 @@ func NewElasticsearchClient(
 	mapper apimeta.RESTMapper,
 	tracer *apm.Tracer,
 ) (*MetricsClient, error) {
-	tlsConfig, err := newTLSClientConfig(metricServerCfg.ClientConfig.TLSClientConfig)
+	logger := log.ForPackage("elasticsearch")
+
+	tlsConfig, err := newTLSClientConfig(logger, metricServerCfg.ClientConfig.TLSClientConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +140,7 @@ func NewElasticsearchClient(
 		return nil, err
 	}
 	return &MetricsClient{
+		logger:          logger,
 		Client:          esClient,
 		metricServerCfg: metricServerCfg,
 		client:          client,
@@ -159,7 +167,7 @@ func (mc *MetricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 func (mc *MetricsClient) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValue, error) {
 	t, ctx := tracing.NewTransaction(context.TODO(), mc.tracer, "elasticsearch-provider", "GetMetricBySelector")
 	defer tracing.EndTransaction(t)
-	klog.Infof("elasticsearch.GetMetricByName(name=%v,info=%v,metricSelector=%v)", name, info, metricSelector)
+	mc.logger.V(1).Info("GetMetricByName", "name", name, "info", info.String(), "metricSelector", metricSelector)
 	value, err := mc.valueFor(&ctx, info, name, labels.NewSelector(), []string{}, metricSelector)
 	if err != nil {
 		return nil, err
@@ -170,7 +178,7 @@ func (mc *MetricsClient) GetMetricByName(name types.NamespacedName, info provide
 func (mc *MetricsClient) GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error) {
 	t, ctx := tracing.NewTransaction(context.TODO(), mc.tracer, "elasticsearch-provider", "GetMetricBySelector")
 	defer tracing.EndTransaction(t)
-	klog.Infof("-> elasticsearchProvider.GetMetricBySelector(namespace=%v,selector=%v,info=%v,metricSelector=%v)", namespace, selector, info, metricSelector)
+	mc.logger.V(1).Info("GetMetricBySelector", "namespace", namespace, "selector", selector, "info", info.String(), "metricSelector", metricSelector)
 	return mc.metricsFor(&ctx, namespace, selector, info, metricSelector)
 }
 
@@ -178,22 +186,22 @@ func (mc *MetricsClient) GetExternalMetric(
 	_, _ string,
 	_ labels.Selector,
 ) (*external_metrics.ExternalMetricValueList, error) {
-	klog.Error("GetExternalMetric: external are not supported by Elasticsearch metrics client")
+	mc.logger.Error(errors.New("not supported by Elasticsearch metrics client"), "Fail to GetExternalMetric")
 	return nil, nil
 }
 
 func (mc *MetricsClient) ListExternalMetrics() (map[provider.ExternalMetricInfo]struct{}, error) {
-	klog.V(2).Infof("ListAllExternalMetrics: external are not supported by Elasticsearch metrics client")
+	mc.logger.V(1).Info("ListAllExternalMetrics: not supported by Elasticsearch metrics client")
 	return nil, nil
 }
 
-func newTLSClientConfig(config *config.TLSClientConfig) (*tls.Config, error) {
+func newTLSClientConfig(logger logr.Logger, config *config.TLSClientConfig) (*tls.Config, error) {
 	if config == nil {
 		// If nothing has been set just return a nil struct
-		klog.V(2).Infof("No Elasticsearch TLS configuration provided")
+		logger.V(1).Info("No Elasticsearch TLS configuration provided")
 		return nil, nil
 	}
-	klog.V(2).Infof("Loading Elasticsearch TLS configuration")
+	logger.V(1).Info("Loading Elasticsearch TLS configuration")
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: config.Insecure,
 	}
@@ -294,7 +302,7 @@ func (mc *MetricsClient) metricsFor(
 	metricSelector labels.Selector,
 ) (*custom_metrics.MetricValueList, error) {
 	defer tracing.Span(ctx)()
-	klog.Infof(fmt.Sprintf("metricsFor(%s,%s)", selector, info))
+	mc.logger.V(1).Info("metricsFor", "selector", selector, "metric", info.String())
 	names, err := helpers.ListObjectNames(mc.mapper, mc.client, namespace, selector, info)
 	if err != nil {
 		return nil, err
