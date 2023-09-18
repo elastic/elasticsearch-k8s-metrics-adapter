@@ -18,3 +18,12 @@ Combined labels for deployment, pods, and pdb
 {{- $new := merge .Values.additionalLabels $commonLabels }}
 {{- toYaml $new }}
 {{- end -}}
+
+{{/*
+Combined Pod labels
+*/}}
+{{- define "elasticsearch-metrics-apiserver.combinedPodLabels" -}}
+{{- $combinedLabels := fromYaml (include "elasticsearch-metrics-apiserver.combinedLabels" .) -}}
+{{- $new := merge .Values.podLabels $combinedLabels }}
+{{- toYaml $new }}
+{{- end -}}
