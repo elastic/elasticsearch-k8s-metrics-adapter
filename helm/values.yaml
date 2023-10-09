@@ -57,5 +57,5 @@ podDisruptionBudget:
 # tolerations defines the node tolerations.
 tolerations: []
 
-# enable pprof profiling
-enableProfiling: false
+# port to run the pprof profiling server on, server is not start if port is 0.
+profilingPort: 8085

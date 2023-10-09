@@ -72,8 +72,7 @@ func main() {
 	logs.AddFlags(cmd.Flags())
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
 	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
-	cmd.Flags().BoolVar(&cmd.EnableProfiling, "enable-profiling", false, "If true starts a http server for pprof profiling")
-	cmd.Flags().IntVar(&cmd.ProfilingPort, "profiling-port", 8085, "port to expose pprof profiling")
+	cmd.Flags().IntVar(&cmd.ProfilingPort, "profiling-port", 0, "port to expose pprof profiling")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)
 	if err != nil {
@@ -93,7 +92,7 @@ func main() {
 	monitoringServer := monitoring.NewServer(adapterCfg.MetricServers, cmd.MonitoringPort, adapterCfg.ReadinessProbe.FailureThreshold)
 	go monitoringServer.Start()
 
-	if cmd.EnableProfiling {
+	if cmd.ProfilingPort > 0 {
 		logger.Info("Starting profiling server...")
 		go profiling.StartProfiling(cmd.ProfilingPort)
 	}
