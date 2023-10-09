@@ -136,7 +136,6 @@ type ElasticsearchAdapter struct {
 	Insecure                 bool
 	PrometheusMetricsEnabled bool
 	MonitoringPort           int
-	EnableProfiling          bool
 	ProfilingPort            int
 }
 
