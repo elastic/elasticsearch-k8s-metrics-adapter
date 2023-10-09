@@ -44,6 +44,7 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/monitoring"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/profiling"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/provider"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/registry"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
@@ -71,6 +72,8 @@ func main() {
 	logs.AddFlags(cmd.Flags())
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
 	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
+	cmd.Flags().BoolVar(&cmd.EnableProfiling, "enable-profiling", false, "If true starts a http server for pprof profiling")
+	cmd.Flags().IntVar(&cmd.ProfilingPort, "profiling-port", 8085, "port to expose pprof profiling")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)
 	if err != nil {
@@ -89,6 +92,11 @@ func main() {
 	logger.Info("Starting monitoring server...")
 	monitoringServer := monitoring.NewServer(adapterCfg.MetricServers, cmd.MonitoringPort, adapterCfg.ReadinessProbe.FailureThreshold)
 	go monitoringServer.Start()
+
+	if cmd.EnableProfiling {
+		logger.Info("Starting profiling server...")
+		go profiling.StartProfiling(cmd.ProfilingPort)
+	}
 
 	apmTracer, err := apm.NewTracer(serviceType, serviceVersion)
 	if err != nil {
@@ -129,6 +137,8 @@ type ElasticsearchAdapter struct {
 	Insecure                 bool
 	PrometheusMetricsEnabled bool
 	MonitoringPort           int
+	EnableProfiling          bool
+	ProfilingPort            int
 }
 
 func (a *ElasticsearchAdapter) newMetricsClients(adapterCfg *config.Config, tracer *apm.Tracer) ([]client.Interface, error) {

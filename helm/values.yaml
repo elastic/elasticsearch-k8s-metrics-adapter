@@ -56,3 +56,5 @@ podDisruptionBudget:
 
 # tolerations defines the node tolerations.
 tolerations: []
+
+enableProfiling: "--enable-profiling"
