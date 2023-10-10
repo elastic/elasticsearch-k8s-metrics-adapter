@@ -39,6 +39,7 @@ spec:
             "--secure-port", "6443",
             "--cert-dir=/var/run/serving-cert",
             "--v", "{{ .Values.logVerbosity }}",
+            "--profiling-port", "{{ .Values.profilingPort}}",
           ]
           {{- with $.Values.resources }}
           resources:
