@@ -164,7 +164,7 @@ From another terminal (or from your favorite API client) you can now run the fol
 #### Listing all available metrics
 
 ```bash
-% curl http://127.0.0.1:8001/apis/custom.metrics.k8s.io/v1beta2/
+% curl http://127.0.0.1:8001/apis/custom.metrics.k8s.io/v1beta2
 ```
 
 ```json
