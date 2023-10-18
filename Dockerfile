@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM docker.io/library/golang:1.20.4 as builder
+FROM --platform=$TARGETPLATFORM docker.io/library/golang:1.21 as builder
 
 WORKDIR /go/src/github.com/elastic/elasticsearch-k8s-metrics-adapter
 
