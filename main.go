@@ -52,15 +52,14 @@ import (
 )
 
 const (
-	serviceType    = "elasticsearch-k8s-metrics-adapter"
-	serviceVersion = "0.0.0"
-
+	serviceType                  = "elasticsearch-k8s-metrics-adapter"
 	elastisearchMetricServerType = "elasticsearch"
 	customMetricServerType       = "custom"
 )
 
 var (
-	logger logr.Logger
+	serviceVersion string
+	logger         logr.Logger
 )
 
 func main() {

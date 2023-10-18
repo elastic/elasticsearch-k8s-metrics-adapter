@@ -15,19 +15,22 @@
 # specific language governing permissions and limitations
 # under the License.
 
-VERSION   ?= $(shell cat VERSION)
-REGISTRY  ?= docker.elastic.co
-NAMESPACE ?= elasticsearch-k8s-metrics-adapter
-IMAGE     ?= elasticsearch-metrics-adapter
-TEMP_DIR  := $(shell mktemp -d)
-ARCH      ?= amd64
+VERSION     ?= $(shell cat VERSION)
+REGISTRY    ?= docker.elastic.co
+NAMESPACE   ?= elasticsearch-k8s-metrics-adapter
+IMAGE       ?= elasticsearch-metrics-adapter
+TEMP_DIR    := $(shell mktemp -d)
+ARCH        ?= amd64
+SHA1        ?= $(shell git rev-parse --short=12 --verify HEAD)
+GO_LD_FLAGS := -X main.serviceVersion=$(SHA1)
+
 
 .PHONY: all docker-build build-elasticsearch-k8s-metrics-adapter test test-adapter-container go-run
 
 all: build-elasticsearch-k8s-metrics-adapter check-license-header
 
 build-elasticsearch-k8s-metrics-adapter: check-license-header generated/openapi/zz_generated.openapi.go
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -o elasticsearch-k8s-metrics-adapter github.com/elastic/elasticsearch-k8s-metrics-adapter
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -ldflags "$(GO_LD_FLAGS)" -o elasticsearch-k8s-metrics-adapter github.com/elastic/elasticsearch-k8s-metrics-adapter
 
 tidy:
 	go mod tidy
@@ -60,10 +63,11 @@ docker-build: generated/openapi/zz_generated.openapi.go generate-notice-file che
 	docker build . \
 			--progress=plain \
 			--build-arg VERSION='$(VERSION)' \
+			--build-arg SOURCE_COMMIT='$(SHA1)' \
 			-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
 
 go-run: ## Run the adapter program locally for development purposes.
-	go run main.go \
+	go run -ldflags "$(GO_LD_FLAGS)" main.go \
 		--lister-kubeconfig ${HOME}/.kube/config \
 		--authentication-kubeconfig ${HOME}/.kube/config \
 		--authorization-kubeconfig ${HOME}/.kube/config \
@@ -77,6 +81,7 @@ docker-multiarch-build: generated/openapi/zz_generated.openapi.go generate-notic
 	docker buildx build . \
 		--progress=plain \
 		--build-arg VERSION='$(VERSION)' \
+		--build-arg SOURCE_COMMIT='$(SHA1)' \
 		--platform $(BUILD_PLATFORM) \
 		-t $(REGISTRY)/$(NAMESPACE)/$(IMAGE):$(VERSION) \
 		--push
