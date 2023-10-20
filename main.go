@@ -37,6 +37,8 @@ import (
 
 	"go.elastic.co/apm"
 
+	_ "github.com/KimMachineGun/automemlimit"
+
 	generatedopenapi "github.com/elastic/elasticsearch-k8s-metrics-adapter/generated/openapi"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/custom_api"
