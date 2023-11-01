@@ -19,6 +19,7 @@ package elasticsearch
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -133,4 +134,60 @@ func newStatusError(msg string) *apierr.StatusError {
 		Reason:  metav1.StatusReasonNotFound,
 		Message: msg,
 	}}
+}
+
+func Test_parseResponseBodyError(t *testing.T) {
+	type args struct {
+		decodedResponseBody map[string]interface{}
+	}
+	tests := []struct {
+		name       string
+		args       args
+		wantResult map[string]interface{}
+		wantErr    error
+	}{
+		{
+			name: "Happy path, valid error struct in response body",
+			args: args{
+				decodedResponseBody: map[string]interface{}{
+					"error": map[string]interface{}{
+						"type":   "test",
+						"reason": "testing",
+					},
+				},
+			},
+			wantResult: map[string]interface{}{
+				"type":   "test",
+				"reason": "testing",
+			},
+			wantErr: nil,
+		},
+		{
+			name: "nil error in response body",
+			args: args{
+				decodedResponseBody: map[string]interface{}{
+					"error": nil,
+				},
+			},
+			wantErr: fmt.Errorf("unable to parse error from the response body: %v", map[string]interface{}{
+				"error": nil,
+			}),
+		},
+		{
+			name: "unexpected format for error in response body",
+			args: args{
+				decodedResponseBody: map[string]interface{}{
+					"error": "test error",
+				},
+			},
+			wantErr: fmt.Errorf("error from response body in unexpected format: %v", "test error"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseResponseBodyError(tt.args.decodedResponseBody)
+			assert.Equal(t, tt.wantResult, result)
+			assert.Equal(t, tt.wantErr, err)
+		})
+	}
 }
