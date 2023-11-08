@@ -150,7 +150,6 @@ func (m *Server) readyHandler(writer http.ResponseWriter, request *http.Request)
 	if err != nil {
 		status = http.StatusServiceUnavailable
 	}
-
 	err = writeJSONResponse(writer, status, health)
 	if err != nil {
 		m.logger.Error(err, "Failed to write monitoring JSON response")
