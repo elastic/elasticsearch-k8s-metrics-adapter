@@ -1,5 +1,8 @@
 FROM --platform=$TARGETPLATFORM docker.io/library/golang:1.21 as builder
 
+ARG VERSION
+ARG SOURCE_COMMIT
+
 WORKDIR /go/src/github.com/elastic/elasticsearch-k8s-metrics-adapter
 
 COPY ["go.mod", "go.sum", "./"]
@@ -7,11 +10,9 @@ COPY generated/       generated/
 COPY pkg/       pkg/
 COPY main.go    main.go
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o elasticsearch-k8s-metrics-adapter github.com/elastic/elasticsearch-k8s-metrics-adapter
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.serviceVersion=$(echo $SOURCE_COMMIT | cut -c 1-12)" -o elasticsearch-k8s-metrics-adapter github.com/elastic/elasticsearch-k8s-metrics-adapter
 
 FROM gcr.io/distroless/static:nonroot
-
-ARG VERSION
 
 LABEL name="Elasticsearch Adapter for the Kubernetes Metrics API" \
       io.k8s.display-name="Elasticsearch " \
