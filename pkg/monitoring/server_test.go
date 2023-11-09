@@ -19,7 +19,6 @@ package monitoring
 
 import (
 	"errors"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,7 +32,7 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
-func TestServer_ServeHTTP(t *testing.T) {
+func TestServer_isReadyAndHealthy(t *testing.T) {
 	server := NewServer([]config.MetricServer{
 		{
 			Name: "metric_server1",
@@ -49,47 +48,40 @@ func TestServer_ServeHTTP(t *testing.T) {
 	}, 1234, 0)
 
 	// Initial status: not ready
-	recorder := httptest.NewRecorder()
-	server.ServeHTTP(recorder, nil)
-	assert.Equal(t, 503, recorder.Code)
+	_, err := server.isReadyAndHealthy()
+	assert.Error(t, err)
 
 	// server1 provides some metrics
 	server.UpdateCustomMetrics(newFakeClient("metric_server1"), nil)
 	server.UpdateExternalMetrics(newFakeClient("metric_server1"), nil)
-	recorder = httptest.NewRecorder()
-	server.ServeHTTP(recorder, nil)
-	assert.Equal(t, 503, recorder.Code) // 503 as we are still waiting for others servers
+	_, err = server.isReadyAndHealthy()
+	assert.Error(t, err) // error as we are still waiting for others servers
 
 	// server2 provides some custom metrics
 	server.UpdateCustomMetrics(newFakeClient("metric_server2"), nil)
-	recorder = httptest.NewRecorder()
-	server.ServeHTTP(recorder, nil)
-	assert.Equal(t, 503, recorder.Code) // 503 as we are still waiting for server3
+	_, err = server.isReadyAndHealthy()
+	assert.Error(t, err) // error as we are still waiting for server3
 
 	// server3 provides some external metrics
 	server.UpdateExternalMetrics(newFakeClient("metric_server3"), nil)
-	recorder = httptest.NewRecorder()
-	server.ServeHTTP(recorder, nil)
-	assert.Equal(t, 200, recorder.Code)
+	_, err = server.isReadyAndHealthy()
+	assert.NoError(t, err)
 
 	// server2 is having some issues
 	server.OnError(newFakeClient("metric_server2"), config.CustomMetricType, errors.New("foo"))
 	server.OnError(newFakeClient("metric_server2"), config.CustomMetricType, errors.New("foo"))
-	recorder = httptest.NewRecorder()
-	server.ServeHTTP(recorder, nil)
-	assert.Equal(t, 200, recorder.Code) // still waiting for 1 error until 503
+	_, err = server.isReadyAndHealthy()
+	assert.NoError(t, err) // still waiting for 1 client error until error
 
 	// server2 is having some issues
 	server.OnError(newFakeClient("metric_server2"), config.CustomMetricType, errors.New("foo"))
-	recorder = httptest.NewRecorder()
-	server.ServeHTTP(recorder, nil)
-	assert.Equal(t, 503, recorder.Code) // error threshold reached
+	_, err = server.isReadyAndHealthy()
+	assert.Error(t, err) // error threshold reached
 
 	// server2 has recovered
 	server.UpdateCustomMetrics(newFakeClient("metric_server2"), nil)
-	recorder = httptest.NewRecorder()
-	server.ServeHTTP(recorder, nil)
-	assert.Equal(t, 200, recorder.Code)
+	_, err = server.isReadyAndHealthy()
+	assert.NoError(t, err)
 
 }
 

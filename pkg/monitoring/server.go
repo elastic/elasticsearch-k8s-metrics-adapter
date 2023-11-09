@@ -140,49 +140,47 @@ func (m *Server) UpdateCustomMetrics(c client.Interface, cms map[provider.Custom
 
 func (m *Server) Start() {
 	http.Handle("/metrics", promhttp.Handler())
-	http.Handle("/readyz", m)
+	http.HandleFunc("/readyz", m.readyHandler)
 	_ = http.ListenAndServe(fmt.Sprintf(":%d", m.monitoringPort), nil)
 }
 
-func (m *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+func (m *Server) readyHandler(writer http.ResponseWriter, _ *http.Request) {
 	status := http.StatusOK
+	health, err := m.isReadyAndHealthy()
+	if err != nil {
+		status = http.StatusServiceUnavailable
+	}
+	if err := writeJSONResponse(writer, status, health); err != nil {
+		m.logger.Error(err, "Failed to write readiness endpoint status to client")
+	}
+}
+
+func (m *Server) isReadyAndHealthy() (ClientsHealthResponse, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	for _, server := range m.metricServers {
 
-		l := m.logger.WithValues("server_name", server.Name)
-		errCtxMsg := "Failed to serve metrics over HTTP"
+	healthResponse := ClientsHealthResponse{ClientFailures: m.clientFailures, ClientOk: m.clientSuccesses}
+
+	for _, server := range m.metricServers {
 		if customMetricsSuccess, hasCustomMetrics := m.clientSuccesses.CustomMetrics[server.Name]; hasCustomMetrics && customMetricsSuccess == 0 {
-			status = http.StatusServiceUnavailable
-			l.Error(errors.New("client has not retrieved an initial set of custom metrics yet"), errCtxMsg)
-			break
+			return healthResponse, errors.New("client has not retrieved an initial set of custom metrics yet")
 		}
 
 		if externalMetricsSuccess, hasExternalMetrics := m.clientSuccesses.ExternalMetrics[server.Name]; hasExternalMetrics && externalMetricsSuccess == 0 {
-			status = http.StatusServiceUnavailable
-			l.Error(errors.New("client has not retrieved an initial set of external metrics yet"), errCtxMsg)
-			break
+			return healthResponse, errors.New("client has not retrieved an initial set of external metrics yet")
 		}
 
 		failures := m.clientFailures.CustomMetrics[server.Name]
 		if failures >= m.failureThreshold {
-			status = http.StatusServiceUnavailable
-			l.Error(fmt.Errorf("client got %d consecutive failures while retrieving custom metrics", failures), errCtxMsg)
-			break
+			return healthResponse, fmt.Errorf("client got %d consecutive failures while retrieving custom metrics", failures)
 		}
 
 		failures = m.clientFailures.ExternalMetrics[server.Name]
 		if failures >= m.failureThreshold {
-			status = http.StatusServiceUnavailable
-			l.Error(fmt.Errorf("client got %d consecutive failures while retrieving external metrics", failures), errCtxMsg)
-			break
+			return healthResponse, fmt.Errorf("client got %d consecutive failures while retrieving external metrics", failures)
 		}
 	}
-
-	err := writeJSONResponse(writer, status, ClientsHealthResponse{ClientFailures: m.clientFailures, ClientOk: m.clientSuccesses})
-	if err != nil {
-		m.logger.Error(err, "Failed to write monitoring JSON response")
-	}
+	return healthResponse, nil
 }
 
 type ClientsHealthResponse struct {
