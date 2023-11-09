@@ -82,6 +82,7 @@ spec:
     spec:
       repository: elastic/elasticsearch-k8s-metrics-adapter
       pipeline_file: ./.buildkite/pipeline.elasticsearch-k8s-metrics-adapter-tests.yaml
+      skip_intermediate_builds: false
       provider_settings:
         trigger_mode: none
       teams:
