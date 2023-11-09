@@ -144,15 +144,14 @@ func (m *Server) Start() {
 	_ = http.ListenAndServe(fmt.Sprintf(":%d", m.monitoringPort), nil)
 }
 
-func (m *Server) readyHandler(writer http.ResponseWriter, request *http.Request) {
+func (m *Server) readyHandler(writer http.ResponseWriter, _ *http.Request) {
 	status := http.StatusOK
 	health, err := m.isReadyAndHealthy()
 	if err != nil {
 		status = http.StatusServiceUnavailable
 	}
-	err = writeJSONResponse(writer, status, health)
-	if err != nil {
-		m.logger.Error(err, "Failed to write monitoring JSON response")
+	if err := writeJSONResponse(writer, status, health); err != nil {
+		m.logger.Error(err, "Failed to write readiness endpoint status to client")
 	}
 }
 
