@@ -114,19 +114,15 @@ func getMetricForPod(
 	defer res.Body.Close()
 
 	if res.IsError() {
-		var e map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+		var errorResponse ErrorResponse
+		if err := json.NewDecoder(res.Body).Decode(&errorResponse); err != nil {
 			return timestampedMetric{}, fmt.Errorf("error parsing the response body: %s", err)
 		} else {
-			responseError, err := parseResponseBodyError(e)
-			if err != nil {
-				return timestampedMetric{}, err
-			}
 			// Print the response status and error information.
 			return timestampedMetric{}, fmt.Errorf("[%s] %s: %s",
 				res.Status(),
-				responseError["type"],
-				responseError["reason"],
+				errorResponse.Error.Type,
+				errorResponse.Error.Reason,
 			)
 		}
 	}
@@ -217,21 +213,6 @@ func getFloat(v interface{}) (float64, error) {
 	default:
 		return math.NaN(), fmt.Errorf("getFloat: value is of incompatible type: %v", v)
 	}
-}
-
-func parseResponseBodyError(decodedResponseBody map[string]interface{}) (map[string]interface{}, error) {
-	var errorMap map[string]interface{}
-	errorInterface, ok := decodedResponseBody["error"]
-	if !ok || errorInterface == nil {
-		return errorMap, fmt.Errorf("unable to parse error from the response body: %v", decodedResponseBody)
-	}
-
-	errorMap, ok = errorInterface.(map[string]interface{})
-	if !ok {
-		return errorMap, fmt.Errorf("error from response body in unexpected format: %v", errorInterface)
-	}
-
-	return errorMap, nil
 }
 
 func getValue(path string, doc map[string]interface{}) (interface{}, error) {
