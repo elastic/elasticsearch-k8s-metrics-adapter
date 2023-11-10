@@ -107,19 +107,9 @@ type MetricsClient struct {
 
 // ErrorResponse is an Elasticsearch error response.
 type ErrorResponse struct {
-	Status int `json:"status"`
 	Error  struct {
-		CausedBy struct {
-			Reason string `json:"reason"`
-			Type   string `json:"type"`
-		} `json:"caused_by"`
 		Reason     string `json:"reason"`
 		Type       string `json:"type"`
-		StackTrace string `json:"stack_trace,omitempty"`
-		RootCause  []struct {
-			Reason string `json:"reason"`
-			Type   string `json:"type"`
-		} `json:"root_cause"`
 	} `json:"error"`
 }
 
