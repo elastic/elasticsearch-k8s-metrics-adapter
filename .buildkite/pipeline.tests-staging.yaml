@@ -11,8 +11,6 @@ steps:
   - label: ":rocket: Run observability gates"
     trigger: "serverless-quality-gates"
     build:
-      branch: main
-      commit: HEAD
       message: "${BUILDKITE_MESSAGE}"
       env:
         TARGET_ENV: staging

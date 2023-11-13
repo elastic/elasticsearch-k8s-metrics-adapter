@@ -12,8 +12,6 @@ steps:
     if: build.env("ENVIRONMENT") == "production-canary"
     trigger: "serverless-quality-gates"
     build:
-      branch: main
-      commit: HEAD
       message: "${BUILDKITE_MESSAGE}"
       env:
         TARGET_ENV: ${ENVIRONMENT}
