@@ -9,7 +9,6 @@ steps:
   - wait
 
   - label: ":rocket: Run observability gates"
-    if: build.env("ENVIRONMENT") == "production-canary"
     trigger: "serverless-quality-gates"
     build:
       message: "${BUILDKITE_MESSAGE}"
