@@ -16,7 +16,7 @@ steps:
       commit: HEAD
       message: "${BUILDKITE_MESSAGE}"
       env:
-        TARGET_ENV: production
+        TARGET_ENV: ${ENVIRONMENT}
         SERVICE: elasticsearch-metrics-apiserver
         CONTAINER_NAME: elasticsearch-metrics-apiserver
         CHECK_CONTAINER_RESTART_COUNT: true
