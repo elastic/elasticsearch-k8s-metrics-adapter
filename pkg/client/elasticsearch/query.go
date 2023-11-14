@@ -29,6 +29,7 @@ import (
 
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
+	estypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -118,17 +119,13 @@ func getMetricForPod(
 	if res.IsError() {
 		bodyBytes, err := io.ReadAll(res.Body)
 		if err != nil {
-			return timestampedMetric{}, errors.Wrap(err, "failed to read body")
+			return timestampedMetric{}, fmt.Errorf("[%s] failed to read search response body: %w", res.Status(), err)
 		}
-		var errorResponse ErrorResponse
+		var errorResponse estypes.ElasticsearchError
 		if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
-			return timestampedMetric{}, fmt.Errorf("[%s] failed to get metric pod: %s", res.Status(), string(bodyBytes))
+			return timestampedMetric{}, fmt.Errorf("[%s] failed to unmarshal search response '%s' with error %w", res.Status(), string(bodyBytes), err)
 		}
-		return timestampedMetric{}, fmt.Errorf("[%s] %s: %s",
-			res.Status(),
-			errorResponse.Error.Type,
-			errorResponse.Error.Reason,
-		)
+		return timestampedMetric{}, errorResponse
 	}
 
 	var r map[string]interface{}

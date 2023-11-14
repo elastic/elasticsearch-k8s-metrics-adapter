@@ -105,14 +105,6 @@ type MetricsClient struct {
 	logger logr.Logger
 }
 
-// ErrorResponse is an Elasticsearch error response.
-type ErrorResponse struct {
-	Error  struct {
-		Reason     string `json:"reason"`
-		Type       string `json:"type"`
-	} `json:"error"`
-}
-
 func (mc *MetricsClient) GetConfiguration() config.MetricServer {
 	return mc.metricServerCfg
 }
