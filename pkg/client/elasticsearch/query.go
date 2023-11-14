@@ -22,12 +22,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
 
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
+	estypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -114,17 +116,15 @@ func getMetricForPod(
 	defer res.Body.Close()
 
 	if res.IsError() {
-		var e map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
-			return timestampedMetric{}, fmt.Errorf("error parsing the response body: %s", err)
-		} else {
-			// Print the response status and error information.
-			return timestampedMetric{}, fmt.Errorf("[%s] %s: %s",
-				res.Status(),
-				e["error"].(map[string]interface{})["type"],
-				e["error"].(map[string]interface{})["reason"],
-			)
+		bodyBytes, err := io.ReadAll(res.Body)
+		if err != nil {
+			return timestampedMetric{}, fmt.Errorf("[%s] failed to read search response body: %w", res.Status(), err)
 		}
+		var errorResponse estypes.ElasticsearchError
+		if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
+			return timestampedMetric{}, fmt.Errorf("[%s] failed to unmarshal search response '%s' with error %w", res.Status(), string(bodyBytes), err)
+		}
+		return timestampedMetric{}, errorResponse
 	}
 
 	var r map[string]interface{}
