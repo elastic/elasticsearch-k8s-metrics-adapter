@@ -22,12 +22,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
 
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
+	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -114,17 +116,19 @@ func getMetricForPod(
 	defer res.Body.Close()
 
 	if res.IsError() {
-		var errorResponse ErrorResponse
-		if err := json.NewDecoder(res.Body).Decode(&errorResponse); err != nil {
-			return timestampedMetric{}, fmt.Errorf("error parsing the response body: %s", err)
-		} else {
-			// Print the response status and error information.
-			return timestampedMetric{}, fmt.Errorf("[%s] %s: %s",
-				res.Status(),
-				errorResponse.Error.Type,
-				errorResponse.Error.Reason,
-			)
+		bodyBytes, err := io.ReadAll(res.Body)
+		if err != nil {
+			return timestampedMetric{}, errors.Wrap(err, "failed to read body")
 		}
+		var errorResponse ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
+			return timestampedMetric{}, fmt.Errorf("[%s] failed to get metric pod: %s", res.Status(), string(bodyBytes))
+		}
+		return timestampedMetric{}, fmt.Errorf("[%s] %s: %s",
+			res.Status(),
+			errorResponse.Error.Type,
+			errorResponse.Error.Reason,
+		)
 	}
 
 	var r map[string]interface{}
