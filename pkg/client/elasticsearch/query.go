@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strings"
 	"time"
 
@@ -44,7 +45,21 @@ type QueryParams struct {
 	Name   types.NamespacedName
 }
 
+var (
+	// Env holds the env. variables available when the adapter is started.
+	Env map[string]interface{}
+)
+
+func init() {
+	Env = make(map[string]interface{})
+	for _, i := range os.Environ() {
+		sep := strings.Index(i, "=")
+		Env[i[0:sep]] = i[sep+1:]
+	}
+}
+
 type customQueryParams struct {
+	Env          map[string]interface{}
 	Metric       string
 	Pod          string
 	PodSelectors map[string]string
@@ -97,6 +112,7 @@ func getMetricForPod(
 			PodSelectors: podSelectors,
 			Namespace:    name.Namespace,
 			Objects:      objects,
+			Env:          Env,
 		}); err != nil {
 			return timestampedMetric{}, err
 		}
