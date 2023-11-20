@@ -1,3 +1,6 @@
+metadata:
+  cluster:
+
 # Labels added to the pod
 podLabels: {}
 

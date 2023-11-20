@@ -32,6 +32,10 @@ spec:
               {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
+            {{- if .Values.metadata.cluster }}
+            - name: KUBERNETES_CLUSTER_NAME
+              value: "{{ .Values.metadata.cluster }}"
+            {{- end -}}
             {{- with .Values.env }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
