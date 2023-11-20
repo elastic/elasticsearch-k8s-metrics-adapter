@@ -52,9 +52,9 @@ var (
 
 func init() {
 	Env = make(map[string]interface{})
-	for _, i := range os.Environ() {
-		sep := strings.Index(i, "=")
-		Env[i[0:sep]] = i[sep+1:]
+	for _, kv := range os.Environ() {
+		sep := strings.Index(kv, "=")
+		Env[kv[0:sep]] = kv[sep+1:]
 	}
 }
 
