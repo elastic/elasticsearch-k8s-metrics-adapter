@@ -80,6 +80,16 @@ Complex metrics can be calculated using a custom query, for example:
 
 The `body` field must contain a valid Elasticsearch query. `metricPath` and `timestampPath` must contain valid [JQ queries](https://stedolan.github.io/jq/manual/#Basicfilters) used to get the metric value and the timestamp from the Elasticsearch response.
 
+Environment variables can be referenced using the following syntax:
+
+```json
+    "match": {
+      "orchestration": "{{ .Env.MYENV }}"
+    }
+```
+
+Where `MYENV` is the environment variable name that you want to include in your template.
+
 ### Forwarding metrics request to existing metrics adapters
 
 You may want to also serve some metrics from an existing third party metric server like Prometheus or Stackdriver. This can be done by adding the third party adapter API endpoint to the `metricServers` list:
