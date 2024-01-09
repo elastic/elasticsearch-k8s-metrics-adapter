@@ -1,0 +1,81 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "local>elastic/renovate-config:control-plane-serverless",
+    "config:base"
+  ],
+  "labels": [
+    "renovate"
+  ],
+  "packageRules": [
+    {
+      "matchPackagePrefixes": [
+        "github.com/elastic/"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "enabled": true,
+      "automerge": true,
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
+    },
+    {
+      "matchPackagePrefixes": [
+        "github.com/elastic/"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": true,
+      "automerge": false,
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
+    },
+    {
+      "excludePackagePrefixes": [
+        "github.com/elastic/"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin"
+      ],
+      "enabled": true,
+      "automerge": true,
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
+    },
+    {
+      "excludePackagePrefixes": [
+        "github.com/elastic/"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": true,
+      "automerge": false,
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
+    },
+    {
+      "excludePackagePrefixes": [
+        "github.com/elastic/"
+      ],
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "enabled": false
+    }
+  ],
+  "automergeStrategy": "squash",
+  "automergeType": "branch",
+  "separateMajorMinor": true
+}
