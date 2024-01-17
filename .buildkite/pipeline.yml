@@ -55,7 +55,7 @@ steps:
     build:
       env:
         SERVICE: elasticsearch-k8s-metrics-adapter
-        COMMIT_HASH: ${VERSION}
+        SERVICE_COMMIT_HASH: ${VERSION}
 notify:
   - slack: "#cp-serverless-applications"
     if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
