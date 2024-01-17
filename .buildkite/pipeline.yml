@@ -1,7 +1,8 @@
 env:
+  VERSION: ${BUILDKITE_COMMIT:0:12}
   DOCKER_IMAGE: docker.elastic.co/cloud-ci/k8s-arch/elasticsearch-k8s-metrics-adapter
   DOCKER_IMAGE_TAG: git-${VERSION}
-  VERSION: ${BUILDKITE_COMMIT:0:12}
+
 steps:
   - label: ":go: Run unit tests"
     command: "make test"
@@ -12,6 +13,7 @@ steps:
       image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.21.3"
       cpu: "4"
       memory: "4G"
+
   - label: ":sonarqube: Static Code Analysis"
     env:
       VAULT_SONAR_TOKEN_PATH: "kv/ci-shared/serverless/shared-analysis-token"
@@ -22,18 +24,21 @@ steps:
       - "/scan-source-code.sh"
     soft_fail: true
     depends_on: "tests"
+
   - label: ":go: Build"
     command: "make all"
     agents:
       image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.21.3"
       cpu: "4"
       memory: "4G"
+
   - label: ":helm: validate helm charts"
     command: "make validate-helm"
     agents:
       image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.21.3"
       cpu: "4"
       memory: "4G"
+
   - label: "Package Helm Charts and push into registry"
     command: "make -C /agent helm-publish"
     env:
@@ -41,14 +46,18 @@ steps:
       CHART_APP_VERSION: "${DOCKER_IMAGE_TAG}"
     agents:
       image: "docker.elastic.co/ci-agent-images/serverless-helm-builder:0.0.2"
+
   - wait
+
   - group: ":docker: Build Container Images"
     steps:
       - label: ":docker: :seedling: Trigger Image Creation"
         command: "make -C /agent generate-docker-images"
         agents:
           image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.6"
+
   - wait
+
   - label: ':argo: Run e2e tests and update version on serverless-gitops'
     branches: main
     trigger: gpctl-promote-with-e2e-tests
@@ -56,6 +65,7 @@ steps:
       env:
         SERVICE: elasticsearch-k8s-metrics-adapter
         SERVICE_COMMIT_HASH: ${VERSION}
+
 notify:
   - slack: "#cp-serverless-applications"
     if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
