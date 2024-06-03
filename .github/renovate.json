@@ -1,11 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "local>elastic/renovate-config:control-plane-serverless",
     "config:base"
   ],
   "labels": [
     "renovate"
+  ],
+  "schedule": [
+    "after 1am on monday"
   ],
   "packageRules": [
     {
