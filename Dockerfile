@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM docker.io/library/golang:1.21 as builder
+FROM --platform=$TARGETPLATFORM docker.io/library/golang:1.22 as builder
 
 ARG VERSION
 ARG SOURCE_COMMIT
