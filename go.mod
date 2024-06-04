@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/KimMachineGun/automemlimit v0.3.0
 	github.com/elastic/go-elasticsearch/v8 v8.11.0
-	github.com/go-logr/logr v1.2.4
+	github.com/go-logr/logr v1.4.2
 	github.com/go-logr/zapr v1.2.4
 	github.com/google/go-cmp v0.5.9
 	github.com/itchyny/gojq v0.12.16
