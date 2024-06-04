@@ -10,7 +10,7 @@ steps:
     artifact_paths:
       - "coverage.out"
     agents:
-      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.21.3"
+      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.22.2"
       cpu: "4"
       memory: "4G"
 
@@ -28,14 +28,14 @@ steps:
   - label: ":go: Build"
     command: "make all"
     agents:
-      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.21.3"
+      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.22.2"
       cpu: "4"
       memory: "4G"
 
   - label: ":helm: validate helm charts"
     command: "make validate-helm"
     agents:
-      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.21.3"
+      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.22.2"
       cpu: "4"
       memory: "4G"
 
