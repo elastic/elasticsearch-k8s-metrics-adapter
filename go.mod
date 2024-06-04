@@ -6,7 +6,7 @@ require (
 	github.com/KimMachineGun/automemlimit v0.3.0
 	github.com/elastic/go-elasticsearch/v8 v8.11.0
 	github.com/go-logr/logr v1.4.2
-	github.com/go-logr/zapr v1.2.4
+	github.com/go-logr/zapr v1.3.0
 	github.com/google/go-cmp v0.5.9
 	github.com/itchyny/gojq v0.12.16
 	github.com/prometheus/client_golang v1.16.0
@@ -16,7 +16,7 @@ require (
 	go.elastic.co/apm/module/apmelasticsearch v1.11.0
 	go.elastic.co/apm/module/apmzap/v2 v2.4.3
 	go.elastic.co/ecszap v1.0.2
-	go.uber.org/zap v1.25.0
+	go.uber.org/zap v1.26.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.28.1
 	k8s.io/apiserver v0.28.1
