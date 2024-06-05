@@ -30,7 +30,7 @@ steps:
     agents:
       image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.22.3"
       cpu: "4"
-      memory: "8G"
+      memory: "6G"
 
   - label: ":helm: validate helm charts"
     command: "make validate-helm"
@@ -55,6 +55,8 @@ steps:
         command: "make -C /agent generate-docker-images"
         agents:
           image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.11"
+          cpu: "4"
+          memory: "6G"
 
   - wait
 
