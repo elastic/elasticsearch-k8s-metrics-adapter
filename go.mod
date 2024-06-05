@@ -15,7 +15,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
 	go.elastic.co/apm v1.15.0
-	go.elastic.co/apm/module/apmelasticsearch v1.11.0
+	go.elastic.co/apm/module/apmelasticsearch v1.15.0
 	go.elastic.co/apm/module/apmzap/v2 v2.4.3
 	go.elastic.co/ecszap v1.0.2
 	go.uber.org/zap v1.27.0
@@ -89,7 +89,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	go.elastic.co/apm/module/apmhttp v1.11.0 // indirect
+	go.elastic.co/apm/module/apmhttp v1.15.0 // indirect
 	go.elastic.co/apm/v2 v2.4.3 // indirect
 	go.elastic.co/fastjson v1.1.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.11 // indirect
