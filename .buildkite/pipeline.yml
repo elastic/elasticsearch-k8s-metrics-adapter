@@ -2,6 +2,7 @@ env:
   VERSION: "${BUILDKITE_COMMIT:0:12}"
   DOCKER_IMAGE: docker.elastic.co/cloud-ci/k8s-arch/elasticsearch-k8s-metrics-adapter
   DOCKER_IMAGE_TAG: git-${VERSION}
+  DRIVAH_AMD_AGENT_MEMORY: "6G"
 
 steps:
   - label: ":go: Run unit tests"
@@ -30,7 +31,7 @@ steps:
     agents:
       image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.22.3"
       cpu: "4"
-      memory: "8G"
+      memory: "6G"
 
   - label: ":helm: validate helm charts"
     command: "make validate-helm"
@@ -54,7 +55,7 @@ steps:
       - label: ":docker: :seedling: Trigger Image Creation"
         command: "make -C /agent generate-docker-images"
         agents:
-          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.11"
+          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.1.0"
 
   - wait
 
