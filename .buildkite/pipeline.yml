@@ -2,6 +2,7 @@ env:
   VERSION: "${BUILDKITE_COMMIT:0:12}"
   DOCKER_IMAGE: docker.elastic.co/cloud-ci/k8s-arch/elasticsearch-k8s-metrics-adapter
   DOCKER_IMAGE_TAG: git-${VERSION}
+  DRIVAH_AMD_AGENT_MEMORY: "6G"
 
 steps:
   - label: ":go: Run unit tests"
@@ -52,9 +53,9 @@ steps:
   - group: ":docker: Build Container Images"
     steps:
       - label: ":docker: :seedling: Trigger Image Creation"
-        command: "make -C /agent generate-docker-images | sed "s|4G|6G|"
+        command: "make -C /agent generate-docker-images"
         agents:
-          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.0.11"
+          image: "docker.elastic.co/eck-dev/serverless-docker-builder:pr-726-a335d9f"
 
   - wait
 
