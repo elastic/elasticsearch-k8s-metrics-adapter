@@ -55,7 +55,7 @@ steps:
       - label: ":docker: :seedling: Trigger Image Creation"
         command: "make -C /agent generate-docker-images"
         agents:
-          image: "docker.elastic.co/eck-dev/serverless-docker-builder:pr-726-a335d9f"
+          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.1.0"
 
   - wait
 
