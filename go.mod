@@ -17,7 +17,6 @@ require (
 	go.elastic.co/apm v1.15.0
 	go.elastic.co/apm/module/apmelasticsearch v1.15.0
 	go.elastic.co/apm/module/apmzap/v2 v2.6.0
-	go.elastic.co/apm/v2 v2.6.0
 	go.elastic.co/ecszap v1.0.2
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -25,7 +24,7 @@ require (
 	k8s.io/apiserver v0.30.1
 	k8s.io/client-go v0.30.1
 	k8s.io/component-base v0.30.1
-	k8s.io/klog/v2 v2.120.1
+	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f
 	k8s.io/metrics v0.30.1
 	sigs.k8s.io/custom-metrics-apiserver v1.30.0
@@ -91,6 +90,7 @@ require (
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	go.elastic.co/apm/module/apmhttp v1.15.0 // indirect
+	go.elastic.co/apm/v2 v2.6.0 // indirect
 	go.elastic.co/fastjson v1.1.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.11 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.11 // indirect
