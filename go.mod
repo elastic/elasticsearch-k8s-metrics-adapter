@@ -6,7 +6,7 @@ toolchain go1.22.3
 
 require (
 	github.com/KimMachineGun/automemlimit v0.3.0
-	github.com/elastic/go-elasticsearch/v8 v8.13.1
+	github.com/elastic/go-elasticsearch/v8 v8.14.0
 	github.com/go-logr/logr v1.4.2
 	github.com/go-logr/zapr v1.3.0
 	github.com/google/go-cmp v0.6.0
@@ -17,7 +17,6 @@ require (
 	go.elastic.co/apm v1.15.0
 	go.elastic.co/apm/module/apmelasticsearch v1.15.0
 	go.elastic.co/apm/module/apmzap/v2 v2.6.0
-	go.elastic.co/apm/v2 v2.6.0
 	go.elastic.co/ecszap v1.0.2
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -46,7 +45,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
-	github.com/elastic/elastic-transport-go/v8 v8.5.0 // indirect
+	github.com/elastic/elastic-transport-go/v8 v8.6.0 // indirect
 	github.com/elastic/go-licenser v0.3.1 // indirect
 	github.com/elastic/go-sysinfo v1.9.0 // indirect
 	github.com/elastic/go-windows v1.0.1 // indirect
@@ -91,18 +90,19 @@ require (
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	go.elastic.co/apm/module/apmhttp v1.15.0 // indirect
+	go.elastic.co/apm/v2 v2.6.0 // indirect
 	go.elastic.co/fastjson v1.1.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.11 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.11 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.11 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.46.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.46.1 // indirect
-	go.opentelemetry.io/otel v1.21.0 // indirect
+	go.opentelemetry.io/otel v1.24.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.21.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.21.0 // indirect
-	go.opentelemetry.io/otel/metric v1.21.0 // indirect
+	go.opentelemetry.io/otel/metric v1.24.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.21.0 // indirect
-	go.opentelemetry.io/otel/trace v1.21.0 // indirect
+	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.22.0 // indirect
