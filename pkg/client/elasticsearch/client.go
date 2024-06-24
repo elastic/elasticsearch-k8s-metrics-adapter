@@ -43,7 +43,7 @@ import (
 
 	esv8 "github.com/elastic/go-elasticsearch/v8"
 	"go.elastic.co/apm"
-	"go.elastic.co/apm/module/apmelasticsearch"
+	"go.elastic.co/apm/module/apmelasticsearch/v2"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
