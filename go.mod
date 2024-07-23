@@ -18,13 +18,13 @@ require (
 	go.elastic.co/ecszap v1.0.2
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.30.2
-	k8s.io/apiserver v0.30.2
-	k8s.io/client-go v0.30.2
-	k8s.io/component-base v0.30.2
+	k8s.io/apimachinery v0.30.3
+	k8s.io/apiserver v0.30.3
+	k8s.io/client-go v0.30.3
+	k8s.io/component-base v0.30.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f
-	k8s.io/metrics v0.30.2
+	k8s.io/metrics v0.30.3
 	sigs.k8s.io/custom-metrics-apiserver v1.30.0
 )
 
@@ -126,9 +126,9 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	howett.net/plist v1.0.0 // indirect
-	k8s.io/api v0.30.2 // indirect
+	k8s.io/api v0.30.3 // indirect
 	k8s.io/gengo/v2 v2.0.0-20240228010128-51d4e06bde70 // indirect
-	k8s.io/kms v0.30.2 // indirect
+	k8s.io/kms v0.30.3 // indirect
 	k8s.io/utils v0.0.0-20240423183400-0849a56e8f22 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
