@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    # prevent accidental namespace deletion if the app is deleted
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+  labels:
+    common.k8s.elastic.co/type: system
+  name: elasticsearch-metrics-apiserver
