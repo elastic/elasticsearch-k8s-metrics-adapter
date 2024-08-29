@@ -1,9 +1,14 @@
+{{- if .Values.namespace.name }}
 apiVersion: v1
 kind: Namespace
 metadata:
+  {{- with .Values.namespace.annotations }}
   annotations:
-    # prevent accidental namespace deletion if the app is deleted
-    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.namespace.labels }}
   labels:
-    common.k8s.elastic.co/type: system
-  name: elasticsearch-metrics-apiserver
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  name: {{ .Values.namespace.name }}
+{{- end }}

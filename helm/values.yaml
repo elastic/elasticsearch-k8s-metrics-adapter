@@ -62,3 +62,13 @@ tolerations: []
 
 # port to run the pprof profiling server on, server is not started if port is 0.
 profilingPort: 0
+
+# namespace defines where the service is installed.
+# Set the name to "", to disable namespace creation.
+namespace:
+  name: "elasticsearch-k8s-metrics-adapter"
+  annotations:
+    # prevent accidental namespace deletion if the app is deleted
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+  labels:
+    common.k8s.elastic.co/type: system
