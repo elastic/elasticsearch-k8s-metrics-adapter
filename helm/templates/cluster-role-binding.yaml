@@ -1,6 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  annotations:
+    # ensure this resource is created before and delete after the deployment to minimise errors during namespace transition
+    argocd.argoproj.io/sync-wave: "1"
   name: hpa-controller-elasticsearch-metrics-apiserver
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -14,6 +17,9 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  annotations:
+    # ensure this resource is created before and delete after the deployment to minimise errors during namespace transition
+    argocd.argoproj.io/sync-wave: "1"
   name: elasticsearch-metrics-apiserver-proxy
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -27,6 +33,9 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  annotations:
+    # ensure this resource is created before and delete after the deployment to minimise errors during namespace transition
+    argocd.argoproj.io/sync-wave: "1"
   name: elasticsearch-metrics-apiserver:system:auth-delegator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -40,6 +49,9 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
+  annotations:
+    # ensure this resource is created before and delete after the deployment to minimise errors during namespace transition
+    argocd.argoproj.io/sync-wave: "1"
   name: elasticsearch-metrics-apiserver-resource-reader
 roleRef:
   apiGroup: rbac.authorization.k8s.io

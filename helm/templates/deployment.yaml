@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   labels:
     {{- include "elasticsearch-metrics-apiserver.combinedLabels" . | nindent 4 }}
+  annotations:
+    # ensure this resource is created after and delete before the rbac to minimise errors during namespace transition
+    argocd.argoproj.io/sync-wave: "2"
   name: elasticsearch-metrics-apiserver
 spec:
   replicas: {{ .Values.replicaCount }}
