@@ -62,3 +62,12 @@ tolerations: []
 
 # port to run the pprof profiling server on, server is not started if port is 0.
 profilingPort: 0
+
+# namespace defines whether the namespace should be created and with what labels/annotations.
+namespace:
+  create: false
+  annotations:
+    # prevent accidental namespace deletion if the app is deleted
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+  labels:
+    common.k8s.elastic.co/type: system
