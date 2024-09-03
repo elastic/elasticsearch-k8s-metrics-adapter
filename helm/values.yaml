@@ -1,5 +1,6 @@
 metadata:
   cluster:
+  deploymentslice: ""
 
 # Labels added to the pod
 podLabels: {}
