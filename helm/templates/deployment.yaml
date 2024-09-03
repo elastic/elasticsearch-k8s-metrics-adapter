@@ -16,6 +16,9 @@ spec:
     metadata:
       labels:
         {{- include "elasticsearch-metrics-apiserver.combinedPodLabels" . | nindent 8 }}
+        {{- with (include "elasticsearch-metrics-apiserver.deploymentslice" . | trim) }}
+        {{- . | nindent 8 }}
+        {{- end }}
       annotations:
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}

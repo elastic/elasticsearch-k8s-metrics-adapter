@@ -18,3 +18,4 @@ steps:
         CONTAINER_NAME: elasticsearch-metrics-apiserver
         CHECK_CONTAINER_RESTART_COUNT: true
         CHECK_METRICS_COUNT: true
+        DEPLOYMENT_SLICES: ${DEPLOYMENT_SLICES:-""}

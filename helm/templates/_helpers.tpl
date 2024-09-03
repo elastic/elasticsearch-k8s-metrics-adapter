@@ -27,3 +27,9 @@ Combined Pod labels
 {{- $new := merge .Values.podLabels $combinedLabels }}
 {{- toYaml $new }}
 {{- end -}}
+
+{{- define "elasticsearch-metrics-apiserver.deploymentslice" -}}
+{{- if .Values.metadata.deploymentslice }}
+engprod.k8s.elastic.co/deploymentslice: {{ .Values.metadata.deploymentslice }}
+{{- end }}
+{{- end }}
