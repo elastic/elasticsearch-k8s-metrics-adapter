@@ -45,13 +45,6 @@ spec:
             {{- with .Values.env }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
-            - name: ELASTIC_APM_GLOBAL_LABELS
-              value: "\
-                orchestrator.target={{ (.Values.metadata).target | default "*"}},\
-                orchestrator.cluster.name={{ (.Values.metadata).cluster | default "default" }},\
-                orchestrator.environment={{ (.Values.metadata).environment | default "default" }},\
-                orchestrator.deploymentslice={{ .Values.metadata.deploymentslice | default "''" }}\
-                " 
           args: [
             "--secure-port", "6443",
             "--cert-dir=/var/run/serving-cert",
