@@ -72,3 +72,6 @@ namespace:
     argocd.argoproj.io/sync-options: Delete=false,Prune=false
   labels:
     common.k8s.elastic.co/type: system
+
+# o11y-user is the elasticsearch user to use to query the o11y cluster
+o11yUser: elastic-agent
