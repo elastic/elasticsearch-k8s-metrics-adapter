@@ -35,7 +35,7 @@ import (
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver"
 	basecmd "sigs.k8s.io/custom-metrics-apiserver/pkg/cmd"
 
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 
 	_ "github.com/KimMachineGun/automemlimit"
 
