@@ -59,9 +59,9 @@ steps:
 
   - wait
 
-  - label: ':argo: Run e2e tests and update version on serverless-gitops'
+  - label: ":serverless::argo: Run synthetics tests and update elasticsearch-k8s-metrics-adapter to ${VERSION} in serverless-gitops"
     branches: main
-    trigger: gpctl-promote-with-e2e-tests
+    trigger: gpctl-promote-after-serverless-devenv-synthetics
     build:
       env:
         SERVICE: elasticsearch-k8s-metrics-adapter
