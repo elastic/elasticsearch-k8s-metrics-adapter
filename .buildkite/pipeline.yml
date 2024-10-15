@@ -46,7 +46,7 @@ steps:
       OCI_REGISTRY_PATH: oci://${DOCKER_IMAGE}
       CHART_APP_VERSION: "${DOCKER_IMAGE_TAG}"
     agents:
-      image: "docker.elastic.co/ci-agent-images/serverless-helm-builder:0.0.5"
+      image: "docker.elastic.co/ci-agent-images/serverless-helm-builder:0.0.7"
 
   - wait
 
