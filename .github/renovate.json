@@ -69,7 +69,8 @@
     },
     {
       "excludePackagePrefixes": [
-        "github.com/elastic/"
+        "github.com/elastic/",
+        "docker.elastic.co/wolfi/"
       ],
       "matchUpdateTypes": [
         "digest"
