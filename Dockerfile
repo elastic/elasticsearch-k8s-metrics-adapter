@@ -1,4 +1,4 @@
-FROM docker.elastic.co/wolfi/go:1.23.2@sha256:219a0adb7a562440ff10aa532de7940fae3b2ed317c46b31fda206d01f7f631d as builder
+FROM docker.elastic.co/wolfi/go:1.23.2@sha256:3301a2d8a17d340c5494398f7c052f3d140dfc7381165b6e012da5ccbadd2f76 as builder
 
 ARG VERSION
 ARG SOURCE_COMMIT
@@ -12,7 +12,7 @@ COPY main.go    main.go
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.serviceVersion=$(echo $SOURCE_COMMIT | cut -c 1-12)" -o elasticsearch-k8s-metrics-adapter github.com/elastic/elasticsearch-k8s-metrics-adapter
 
-FROM docker.elastic.co/wolfi/static:latest@sha256:e78eb21f59f52446a23f7d45e78805c4f26406a6e9c4b21ec50dfdf07e6bec57
+FROM docker.elastic.co/wolfi/static:latest@sha256:1c785f2145250a80d2d71d2b026276f3358ef3543448500c72206d37ec4ece37
 
 LABEL name="Elasticsearch Adapter for the Kubernetes Metrics API" \
       io.k8s.display-name="Elasticsearch " \
