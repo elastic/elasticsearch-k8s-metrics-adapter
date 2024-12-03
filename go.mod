@@ -11,7 +11,7 @@ require (
 	github.com/itchyny/gojq v0.12.17
 	github.com/prometheus/client_golang v1.18.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	go.elastic.co/apm/module/apmelasticsearch/v2 v2.6.2
 	go.elastic.co/apm/module/apmzap/v2 v2.6.2
 	go.elastic.co/apm/v2 v2.6.2
