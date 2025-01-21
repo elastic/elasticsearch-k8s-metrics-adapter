@@ -188,10 +188,10 @@ github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
-go.elastic.co/apm/module/apmelasticsearch/v2 v2.6.2 h1:x5LIkBAIo2XT8nBqoAjPeJKUJC94le7D9aclBYP9uCw=
-go.elastic.co/apm/module/apmelasticsearch/v2 v2.6.2/go.mod h1:LkYiSaKsGns6yRqXKAMbFyz7Nk8ikPCD/5CGkgQOY/A=
-go.elastic.co/apm/module/apmhttp/v2 v2.6.2 h1:+aYtP1Lnrsm+XtEs87RWG2PAyU6LHDDnYnJl3Lth0Qk=
-go.elastic.co/apm/module/apmhttp/v2 v2.6.2/go.mod h1:vlH+vXHaEijKK4pk605LOK+lbLDKwcByhlq4J24PeXw=
+go.elastic.co/apm/module/apmelasticsearch/v2 v2.6.3 h1:5CuemBg1oZnXI6jz+jkLqM95Np1XHasdy0CCelX62Ec=
+go.elastic.co/apm/module/apmelasticsearch/v2 v2.6.3/go.mod h1:MVK2TIrvMGQaL7bnO4dbnJ+jpDNqmkj+BukDRBYTI60=
+go.elastic.co/apm/module/apmhttp/v2 v2.6.3 h1:jwFovJZkccySKCyy2oE9ZKvUry/a4gdQHF/MtZUQVtE=
+go.elastic.co/apm/module/apmhttp/v2 v2.6.3/go.mod h1:w94Gkk6uzI/K+eJYKDLB66tvWC5uK0fSHyWcyX2jPlQ=
 go.elastic.co/apm/module/apmzap/v2 v2.6.3 h1:QxszhmFs2qD42sHSd6qnZUv5xMPV7cVSIt1qU/o4nwA=
 go.elastic.co/apm/module/apmzap/v2 v2.6.3/go.mod h1:gOs+EJgXDCyg1pK4pcxN6fL9hKNC+s/Hj20e9RvGeJg=
 go.elastic.co/apm/v2 v2.6.3 h1:yVKFPLnmHOxpzLMGd3aexcik20ziXmRHqgcn9NZn/VU=
