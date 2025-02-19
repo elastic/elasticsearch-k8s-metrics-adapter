@@ -11,9 +11,6 @@
   ],
   "packageRules": [
     {
-      "matchPackagePrefixes": [
-        "github.com/elastic/"
-      ],
       "matchUpdateTypes": [
         "minor",
         "patch",
@@ -24,12 +21,12 @@
       "automerge": true,
       "postUpdateOptions": [
         "gomodTidy"
+      ],
+      "matchPackageNames": [
+        "github.com/elastic/{/,}**"
       ]
     },
     {
-      "matchPackagePrefixes": [
-        "github.com/elastic/"
-      ],
       "matchUpdateTypes": [
         "major"
       ],
@@ -37,12 +34,12 @@
       "automerge": false,
       "postUpdateOptions": [
         "gomodTidy"
+      ],
+      "matchPackageNames": [
+        "github.com/elastic/{/,}**"
       ]
     },
     {
-      "excludePackagePrefixes": [
-        "github.com/elastic/"
-      ],
       "matchUpdateTypes": [
         "minor",
         "patch",
@@ -52,12 +49,12 @@
       "automerge": true,
       "postUpdateOptions": [
         "gomodTidy"
+      ],
+      "matchPackageNames": [
+        "!github.com/elastic/{/,}**"
       ]
     },
     {
-      "excludePackagePrefixes": [
-        "github.com/elastic/"
-      ],
       "matchUpdateTypes": [
         "major"
       ],
@@ -65,17 +62,20 @@
       "automerge": false,
       "postUpdateOptions": [
         "gomodTidy"
+      ],
+      "matchPackageNames": [
+        "!github.com/elastic/{/,}**"
       ]
     },
     {
-      "excludePackagePrefixes": [
-        "github.com/elastic/",
-        "docker.elastic.co/wolfi/"
-      ],
       "matchUpdateTypes": [
         "digest"
       ],
-      "enabled": false
+      "enabled": false,
+      "matchPackageNames": [
+        "!github.com/elastic/{/,}**",
+        "!docker.elastic.co/wolfi/{/,}**"
+      ]
     }
   ],
   "automergeStrategy": "squash",

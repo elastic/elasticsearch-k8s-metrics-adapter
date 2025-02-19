@@ -11,6 +11,7 @@ metadata:
     github.com/project-slug: elastic/elasticsearch-k8s-metrics-adapter
     buildkite.com/project-slug: elastic/elasticsearch-k8s-metrics-adapter
     sonarqube.org/project-key: elasticsearch-k8s-metrics-adapter
+    pagerduty.com/service-id: PA1IPRT
   tags:
     - serverless
     - regional

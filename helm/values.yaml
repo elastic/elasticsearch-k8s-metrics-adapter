@@ -74,4 +74,4 @@ namespace:
     common.k8s.elastic.co/type: system
 
 # o11y-user is the elasticsearch user to use to query the o11y cluster
-o11yUser: elastic-agent
+o11yUser: elasticsearch-k8s-metrics-adapter
