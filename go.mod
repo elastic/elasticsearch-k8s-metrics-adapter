@@ -1,6 +1,8 @@
 module github.com/elastic/elasticsearch-k8s-metrics-adapter
 
-go 1.22.1
+go 1.23
+
+toolchain go1.24.1
 
 require (
 	github.com/KimMachineGun/automemlimit v0.7.1
@@ -14,7 +16,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	go.elastic.co/apm/module/apmelasticsearch/v2 v2.6.3
 	go.elastic.co/apm/module/apmzap/v2 v2.6.3
-	go.elastic.co/apm/v2 v2.6.3
+	go.elastic.co/apm/v2 v2.7.0
 	go.elastic.co/ecszap v1.0.3
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
