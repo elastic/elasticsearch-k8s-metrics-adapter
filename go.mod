@@ -1,6 +1,8 @@
 module github.com/elastic/elasticsearch-k8s-metrics-adapter
 
-go 1.22.1
+go 1.23
+
+toolchain go1.24.1
 
 require (
 	github.com/KimMachineGun/automemlimit v0.7.1
@@ -12,9 +14,9 @@ require (
 	github.com/prometheus/client_golang v1.21.1
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
-	go.elastic.co/apm/module/apmelasticsearch/v2 v2.6.3
+	go.elastic.co/apm/module/apmelasticsearch/v2 v2.7.0
 	go.elastic.co/apm/module/apmzap/v2 v2.6.3
-	go.elastic.co/apm/v2 v2.6.3
+	go.elastic.co/apm/v2 v2.7.0
 	go.elastic.co/ecszap v1.0.3
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -80,7 +82,7 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	go.elastic.co/apm/module/apmhttp/v2 v2.6.3 // indirect
+	go.elastic.co/apm/module/apmhttp/v2 v2.7.0 // indirect
 	go.elastic.co/fastjson v1.1.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.11 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.11 // indirect
