@@ -1,6 +1,6 @@
 module github.com/elastic/elasticsearch-k8s-metrics-adapter
 
-go 1.23
+go 1.23.0
 
 toolchain go1.24.1
 
@@ -29,6 +29,8 @@ require (
 	k8s.io/metrics v0.30.3
 	sigs.k8s.io/custom-metrics-apiserver v1.30.0
 )
+
+replace golang.org/x/net v0.34.0 => golang.org/x/net v0.37.0 // temporary replacement to address CVE-2025-22870
 
 require (
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
@@ -97,15 +99,15 @@ require (
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20231226003508-02704c960a9b // indirect
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/term v0.28.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/term v0.30.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	google.golang.org/genproto v0.0.0-20231212172506-995d672761c0 // indirect
