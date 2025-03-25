@@ -15,7 +15,7 @@ require (
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
 	go.elastic.co/apm/module/apmelasticsearch/v2 v2.7.0
-	go.elastic.co/apm/module/apmzap/v2 v2.6.3
+	go.elastic.co/apm/module/apmzap/v2 v2.7.0
 	go.elastic.co/apm/v2 v2.7.0
 	go.elastic.co/ecszap v1.0.3
 	go.uber.org/zap v1.27.0
