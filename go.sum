@@ -190,8 +190,8 @@ go.elastic.co/apm/module/apmelasticsearch/v2 v2.7.0 h1:KcyCfcS8EZoqO7J5g1zbei1T0
 go.elastic.co/apm/module/apmelasticsearch/v2 v2.7.0/go.mod h1:3Od+hOvsXvOJ5y6XTVT8XjkwI+4lP2q3aKQSLXqZLmM=
 go.elastic.co/apm/module/apmhttp/v2 v2.7.0 h1:qSZ5aVT1K+OwFy3JmylgJntgAhVl4GmHPzUsA2JgV4g=
 go.elastic.co/apm/module/apmhttp/v2 v2.7.0/go.mod h1:cdBNYMOe0uXcyS/IqhXfKt8isl1DX1nM3nFJm+beY4w=
-go.elastic.co/apm/module/apmzap/v2 v2.6.3 h1:QxszhmFs2qD42sHSd6qnZUv5xMPV7cVSIt1qU/o4nwA=
-go.elastic.co/apm/module/apmzap/v2 v2.6.3/go.mod h1:gOs+EJgXDCyg1pK4pcxN6fL9hKNC+s/Hj20e9RvGeJg=
+go.elastic.co/apm/module/apmzap/v2 v2.7.0 h1:jpfn3kLXcNpZkCPCipGdbkmi2Y7fOUeYUeoPDKSp+8Q=
+go.elastic.co/apm/module/apmzap/v2 v2.7.0/go.mod h1:31dKGp4KyNnbwIJn1Wc8zTtdxMmzutAcj6DE1dAb0kk=
 go.elastic.co/apm/v2 v2.7.0 h1:fbsy3BmTTedIbj7+1Ay9Zpdfuztd8RUk7Dm0JvxRW/M=
 go.elastic.co/apm/v2 v2.7.0/go.mod h1:f1Sr3rVJju5winTjsJtKzofdU32L7+Mw/c23cVcn3Io=
 go.elastic.co/ecszap v1.0.3 h1:RQtagS3uSftE8mPZ3msqb6mVI67jgcDuy1PUqiMv8ow=
