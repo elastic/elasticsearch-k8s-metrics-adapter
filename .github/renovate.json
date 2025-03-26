@@ -23,7 +23,8 @@
         "gomodTidy"
       ],
       "matchPackageNames": [
-        "github.com/elastic/{/,}**"
+        "github.com/elastic/{/,}**",
+        "docker.elastic.co/wolfi/{/,}**"
       ]
     },
     {
