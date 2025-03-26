@@ -76,6 +76,30 @@
         "!github.com/elastic/{/,}**",
         "!docker.elastic.co/wolfi/{/,}**"
       ]
+    },
+    {
+      "groupName": "all ungrouped dependencies",
+      "matchPackageNames": [
+        "*"
+      ]
+    },
+    {
+      "groupName": "elastic-deps",
+      "matchPackageNames": [
+        "/^github.com/elastic/",
+        "/^go.elastic.co/"
+      ]
+    },
+    {
+      "matchPackageNames": [
+        "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent",
+        "go",
+        "golang",
+        "docker.io/library/golang",
+        "docker.elastic.co/wolfi/go",
+        "github.com/golangci/golangci-lint"
+      ],
+      "groupName": "go"
     }
   ],
   "automergeStrategy": "squash",
