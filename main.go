@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -27,7 +28,6 @@ import (
 	// Load all auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"k8s.io/apimachinery/pkg/util/wait"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/kubernetes"
@@ -126,7 +126,7 @@ func main() {
 	}
 
 	logger.Info("Starting elastic k8s metrics adapter...")
-	if err := cmd.Run(wait.NeverStop); err != nil {
+	if err := cmd.Run(context.WithoutCancel(context.Background())); err != nil {
 		logErrorAndExit(err, "Unable to run elastic k8s metrics adapter")
 	}
 }
