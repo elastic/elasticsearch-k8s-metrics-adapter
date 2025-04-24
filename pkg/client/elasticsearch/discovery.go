@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
-	esv8 "github.com/elastic/go-elasticsearch/v8"
-	"github.com/elastic/go-elasticsearch/v8/esapi"
+	esv8 "github.com/elastic/go-elasticsearch/v9"
+	"github.com/elastic/go-elasticsearch/v9/esapi"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
