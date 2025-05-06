@@ -54,6 +54,8 @@ steps:
     steps:
       - label: ":docker: :seedling: Trigger Image Creation"
         command: "make -C /agent generate-docker-images"
+        env:
+          DRIVAH_AMD_AGENT_MEMORY: "5G"
         agents:
           image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.6.1"
 
