@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	esv8 "github.com/elastic/go-elasticsearch/v8"
-	"github.com/elastic/go-elasticsearch/v8/esapi"
-	estypes "github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	esv8 "github.com/elastic/go-elasticsearch/v9"
+	"github.com/elastic/go-elasticsearch/v9/esapi"
+	estypes "github.com/elastic/go-elasticsearch/v9/typedapi/types"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
