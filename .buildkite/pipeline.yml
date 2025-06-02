@@ -13,7 +13,7 @@ steps:
     agents:
       image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.23.1-1"
       cpu: "4"
-      memory: "4G"
+      memory: "5G"
 
   - label: ":sonarqube: Static Code Analysis"
     env:
