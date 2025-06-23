@@ -20,14 +20,14 @@ require (
 	go.elastic.co/ecszap v1.0.3
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.33.0
-	k8s.io/apiserver v0.33.0
-	k8s.io/client-go v0.33.0
-	k8s.io/component-base v0.33.0
+	k8s.io/apimachinery v0.33.1
+	k8s.io/apiserver v0.33.1
+	k8s.io/client-go v0.33.1
+	k8s.io/component-base v0.33.1
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff
-	k8s.io/metrics v0.33.0
-	sigs.k8s.io/custom-metrics-apiserver v1.32.0
+	k8s.io/metrics v0.33.1
+	sigs.k8s.io/custom-metrics-apiserver v1.33.0
 )
 
 require (
@@ -45,7 +45,7 @@ require (
 	github.com/elastic/elastic-transport-go/v8 v8.7.0 // indirect
 	github.com/elastic/go-sysinfo v1.9.0 // indirect
 	github.com/elastic/go-windows v1.0.1 // indirect
-	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
+	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
@@ -115,9 +115,9 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	howett.net/plist v1.0.0 // indirect
-	k8s.io/api v0.33.0 // indirect
+	k8s.io/api v0.33.1 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250207200755-1244d31929d7 // indirect
-	k8s.io/kms v0.33.0 // indirect
+	k8s.io/kms v0.33.1 // indirect
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
