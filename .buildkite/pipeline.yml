@@ -58,7 +58,7 @@ steps:
           DRIVAH_AMD_AGENT_MEMORY: "8G"
           DRIVAH_AMD_AGENT_CPU: "6"
         agents:
-          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.8.1"
+          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.8.3"
 
   - wait
 
