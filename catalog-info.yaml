@@ -16,6 +16,25 @@ metadata:
     - serverless
     - regional
     - application
+  links:
+    - title: PROD - Controller Dashboard
+      url: https://overview.elastic-cloud.com/app/dashboards#/view/serverless-elasticsearch-k8s-metrics-adapter
+      icon: dashboard
+    - title: PROD - APM service overview
+      url: https://overview.elastic-cloud.com/app/apm/services/elasticsearch-k8s-metrics-adapter/overview
+      icon: dashboard
+    - title: STG - Controller Dashboard
+      url:  https://overview.aws.staging.foundit.no/app/dashboards#/view/serverless-elasticsearch-k8s-metrics-adapter
+      icon: dashboard
+    - title: STG - APM service overview
+      url: https://overview.aws.staging.foundit.no/app/apm/services/elasticsearch-k8s-metrics-adapter/overview
+      icon: dashboard
+    - title: QA - Controller Dashboard
+      url: https://overview.qa.cld.elstc.co/app/dashboards#/view/serverless-elasticsearch-k8s-metrics-adapter
+      icon: dashboard
+    - title: QA - APM service overview
+      url: https://overview.qa.cld.elstc.co/app/apm/services/elasticsearch-k8s-metrics-adapter/overview
+      icon: dashboard
 spec:
   type: service
   owner: group:serverless-applications
