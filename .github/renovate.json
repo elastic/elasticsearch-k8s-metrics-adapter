@@ -4,10 +4,8 @@
     "config:recommended"
   ],
   "labels": [
-    "renovate"
-  ],
-  "schedule": [
-    "after 1am on monday"
+    "renovate",
+    "renovate-auto-approve"
   ],
   "packageRules": [
     {
@@ -105,5 +103,9 @@
   ],
   "automergeStrategy": "squash",
   "automergeType": "pr",
+  "automergeSchedule": ["at any time"],
+  "schedule": [
+    "after 1am on monday"
+  ],
   "separateMajorMinor": true
 }
