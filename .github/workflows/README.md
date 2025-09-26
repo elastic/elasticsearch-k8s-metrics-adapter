@@ -4,7 +4,7 @@
 
 This workflow automatically approves Renovate PRs created by the Renovate bot, but only if:
 
-- The PR is created by `elastic-renovate-prod[bot]` or `elastic-renovate-dev[bot]`
+- The PR is created by `elastic-renovate-prod[bot]`
 - The PR has the `renovate-auto-approve` label (which is added via the `labels` configuration in our Renovate configuration)
 - The workflow is triggered by the `auto_merge_enabled` event on the `main` branch
 
