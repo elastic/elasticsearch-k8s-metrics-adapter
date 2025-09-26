@@ -1,0 +1,44 @@
+# This workflow automatically approves Renovate PRs created by the Renovate bot during weekdays (Monday to Thursday) between 10 PM and 4 AM UTC, or anytime on weekends (Saturday and Sunday). It checks if the PR is created by the Renovate bot and has the 'renovate-auto-approve' label before approving it.
+# Its functionality is complimentary to the renovate functionality in order to enable a 2-step PR based automerge.
+name: GitHub Actions Bot Auto-Approve Renovate PRs
+
+on:
+  pull_request:
+    branches:
+      - main
+    # auto_merge_enabled is a custom event that is triggered when a PR is created.
+    # Auto-merge will be enabled by Renovate -if configured- and this will trigger the github workflow.
+    types: [auto_merge_enabled]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    # The condition checks if the PR is created by the Renovate bot and has the 'renovate-auto-approve' label
+    if: (github.event.pull_request.user.login == 'elastic-renovate-prod[bot]') && contains(github.event.pull_request.labels.*.name, 'renovate-auto-approve')
+    steps:
+    # The first step of the job is to check if the current time is within the approval window
+    # As defined by the team the approval of Renovate PRs should only happen from Monday to Thursday.
+    - name: Check if workflow is triggered within approval time window
+      id: timecheck
+      shell: bash
+      run: |
+        day=$(date -u +%u) # 1=Monday, 4=Thursday
+        if [[ "$day" -ge 1 && "$day" -le 4 ]]; then
+          echo "within_window=true" >> $GITHUB_OUTPUT
+        else
+          echo "within_window=false" >> $GITHUB_OUTPUT
+        fi
+    - name: Approve Renovate PR using GitHub Actions Bot
+      if: steps.timecheck.outputs.within_window == 'true'
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const result = await github.rest.pulls.createReview({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number,
+            event: "APPROVE"
+          })
