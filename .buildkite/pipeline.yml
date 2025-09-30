@@ -15,17 +15,6 @@ steps:
       cpu: "4"
       memory: "5G"
 
-  - label: ":sonarqube: Static Code Analysis"
-    env:
-      VAULT_SONAR_TOKEN_PATH: "kv/ci-shared/serverless/shared-analysis-token"
-    agents:
-      image: "docker.elastic.co/cloud-ci/sonarqube/buildkite-scanner:latest"
-    command:
-      - "buildkite-agent artifact download coverage.out ."
-      - "/scan-source-code.sh"
-    soft_fail: true
-    depends_on: "tests"
-
   - label: ":go: Build"
     command: "make all"
     agents:
