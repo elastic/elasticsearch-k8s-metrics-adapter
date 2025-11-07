@@ -35,13 +35,17 @@ build-elasticsearch-k8s-metrics-adapter: check-license-header generated/openapi/
 tidy:
 	go mod tidy
 
-test:
+test: toolchain
 	CGO_ENABLED=0 go test -coverprofile=./coverage.out ./pkg/...
 
 test-kind:
 	kind load docker-image $(REGISTRY)/$(NAMESPACE)/$(IMAGE)-$(ARCH):$(VERSION)
 	kubectl apply -f deploy/elasticsearch-k8s-metrics-adapter.yaml
 	kubectl rollout restart -n custom-metrics deployment/custom-metrics-apiserver
+
+.PHONY: toolchain
+toolchain:
+	go env -w GOTOOLCHAIN=go1.25.4+auto # temp workaround until https://github.com/golang/go/issues/75031 is fixed
 
 check-license-header:
 	@ hack/check/check-license-header.sh
