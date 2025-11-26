@@ -18,7 +18,7 @@ require (
 	go.elastic.co/apm/module/apmzap/v2 v2.7.1
 	go.elastic.co/apm/v2 v2.7.1
 	go.elastic.co/ecszap v1.0.3
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.34.2
 	k8s.io/apiserver v0.34.2
