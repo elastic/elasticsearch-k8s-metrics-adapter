@@ -57,11 +57,11 @@ generate-notice-file:
 generated/openapi/zz_generated.openapi.go: go.mod go.sum
 	go run k8s.io/kube-openapi/cmd/openapi-gen --logtostderr \
 	    --go-header-file ./hack/boilerplate.go.txt \
-	    --output-dir ./ \
+	    --output-dir ./generated/openapi \
 	    --output-pkg github.com/elastic/elasticsearch-k8s-metrics-adapter/generated/openapi \
-	    --output-file zz_generated.openapi \
+	    --output-file zz_generated.openapi.go \
 	    --report-filename /dev/null \
-	    k8s.io/metrics/pkg/apis/custom_metrics k8s.io/metrics/pkg/apis/custom_metrics/v1beta1 k8s.io/metrics/pkg/apis/custom_metrics/v1beta2 k8s.io/metrics/pkg/apis/external_metrics k8s.io/metrics/pkg/apis/external_metrics/v1beta1 k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/api/resource k8s.io/apimachinery/pkg/version k8s.io/api/core/v1 \
+	    k8s.io/metrics/pkg/apis/custom_metrics k8s.io/metrics/pkg/apis/custom_metrics/v1beta1 k8s.io/metrics/pkg/apis/custom_metrics/v1beta2 k8s.io/metrics/pkg/apis/external_metrics k8s.io/metrics/pkg/apis/external_metrics/v1beta1 k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/api/resource k8s.io/apimachinery/pkg/version k8s.io/api/core/v1
 
 docker-build: generated/openapi/zz_generated.openapi.go generate-notice-file check-license-header
 	docker build . \
