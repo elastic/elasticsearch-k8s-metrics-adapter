@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//go:build codegen
 // +build codegen
 
 // Package is only a stub to ensure k8s.io/kube-openapi/cmd/openapi-gen is vendored
@@ -22,5 +23,6 @@
 package main
 
 import (
+	_ "k8s.io/apimachinery/pkg/version"
 	_ "k8s.io/kube-openapi/cmd/openapi-gen"
 )
