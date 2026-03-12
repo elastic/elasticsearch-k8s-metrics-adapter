@@ -13,7 +13,7 @@
 env:
   ENVIRONMENT: ${ENVIRONMENT?}
   DEPLOYMENT_SLICES: ${DEPLOYMENT_SLICES:-""}
-  TEAM_CHANNEL: "#cp-serverless-applications"
+  TEAM_CHANNEL: "#cp-serverless-applications-notifications"
 
 steps:
   - label: ":pipeline::grey_question::seedling: Trigger service tests for ${ENVIRONMENT}"

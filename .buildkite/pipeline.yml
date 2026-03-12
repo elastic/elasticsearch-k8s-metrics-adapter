@@ -60,5 +60,5 @@ steps:
         SERVICE_COMMIT_HASH: "${VERSION}"
 
 notify:
-  - slack: "#cp-serverless-applications"
+  - slack: "#cp-serverless-applications-notifications"
     if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
