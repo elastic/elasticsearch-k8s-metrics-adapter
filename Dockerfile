@@ -1,4 +1,4 @@
-FROM docker.elastic.co/wolfi/go:1.26.1-r1@sha256:84111b62cda9cf80075e8837c0edc9bb945c6760d45607ca7ab1e1c160d18a67 as builder
+FROM docker.elastic.co/wolfi/go:1.26.1-r1@sha256:3c96d63c2a711da154d7e00f24f7120ef93e1f60fb44caf5da693eb044d62462 as builder
 
 ARG VERSION
 ARG SOURCE_COMMIT
