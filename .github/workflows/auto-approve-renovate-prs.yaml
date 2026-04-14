@@ -33,7 +33,7 @@ jobs:
         fi
     - name: Approve Renovate PR using GitHub Actions Bot
       if: steps.timecheck.outputs.within_window == 'true'
-      uses: actions/github-script@v8
+      uses: actions/github-script@v9
       with:
         script: |
           const result = await github.rest.pulls.createReview({
