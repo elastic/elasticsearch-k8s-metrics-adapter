@@ -79,8 +79,6 @@ spec:
           access_level: BUILD_AND_READ
         cloud-tooling:
           access_level: MANAGE_BUILD_AND_READ
-        everyone:
-          access_level: READ_ONLY
         serverless-core:
           access_level: BUILD_AND_READ
 # Quality gates pipeline
