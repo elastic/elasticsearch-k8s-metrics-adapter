@@ -12,6 +12,7 @@ metadata:
     buildkite.com/project-slug: elastic/elasticsearch-k8s-metrics-adapter
     pagerduty.com/service-id: PA1IPRT
   tags:
+    - ecp
     - serverless
     - regional
     - application
@@ -36,7 +37,7 @@ metadata:
       icon: dashboard
 spec:
   type: service
-  owner: group:serverless-applications
+  owner: group:ecp-services
   lifecycle: experimental
   system: control-plane
 # Buildkite pipeline
@@ -52,7 +53,7 @@ metadata:
       url: https://buildkite.com/elastic/elasticsearch-k8s-metrics-adapter
 spec:
   type: buildkite-pipeline
-  owner: group:serverless-applications
+  owner: group:ecp-services
   system: buildkite
   implementation:
     apiVersion: buildkite.elastic.dev/v1
@@ -70,8 +71,12 @@ spec:
         publish_commit_status_per_step: false
         skip_pull_request_builds_for_existing_commits: false
       teams:
-        serverless-applications:
+        ecp-services:
           access_level: MANAGE_BUILD_AND_READ
+        everyone:
+          access_level: READ_ONLY
+        serverless-applications:
+          access_level: BUILD_AND_READ
         cloud-tooling:
           access_level: MANAGE_BUILD_AND_READ
         everyone:
@@ -90,7 +95,7 @@ metadata:
       url: https://buildkite.com/elastic/elasticsearch-k8s-metrics-adapter-tests
 spec:
   type: buildkite-pipeline
-  owner: group:serverless-applications
+  owner: group:ecp-services
   system: buildkite
   implementation:
     apiVersion: buildkite.elastic.dev/v1
