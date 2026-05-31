@@ -18,6 +18,7 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -42,6 +43,10 @@ type Registry struct {
 
 	customMetrics   map[provider.CustomMetricInfo]*metricClients
 	externalMetrics map[provider.ExternalMetricInfo]*metricClients
+
+	// resolver, when set, is consulted on cache misses to lazily discover and
+	// register metrics on demand. Used in lazy discovery mode.
+	resolver *Resolver
 }
 
 func NewRegistry() *Registry {
@@ -51,6 +56,12 @@ func NewRegistry() *Registry {
 		customMetrics:   make(map[provider.CustomMetricInfo]*metricClients),
 		externalMetrics: make(map[provider.ExternalMetricInfo]*metricClients),
 	}
+}
+
+// WithResolver attaches a Resolver to enable lazy lookup on registry misses.
+func (r *Registry) WithResolver(resolver *Resolver) *Registry {
+	r.resolver = resolver
+	return r
 }
 
 // getCustomMetricsFrom builds a set of the custom metrics currently served by a client.
@@ -171,31 +182,51 @@ func getRemovedExternalMetrics(old map[provider.ExternalMetricInfo]struct{}, new
 	return outdated
 }
 
-func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client.Interface, error) {
+func (r *Registry) GetCustomMetricClient(ctx context.Context, info provider.CustomMetricInfo) (client.Interface, error) {
 	r.lock.RLock()
-	defer r.lock.RUnlock()
-	var metricClients *metricClients
-	var ok bool
-	if metricClients, ok = r.customMetrics[info]; !ok {
-		r.logger.V(1).Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
-		return nil, &errors.StatusError{
-			ErrStatus: metav1.Status{
-				Status:  metav1.StatusFailure,
-				Code:    http.StatusNotFound,
-				Reason:  metav1.StatusReasonNotFound,
-				Message: fmt.Sprintf("custom metric %s is not served by any metric client", info.Metric),
-			}}
+	metricClients, ok := r.customMetrics[info]
+	r.lock.RUnlock()
+	if ok {
+		metricClient, err := metricClients.getBestMetricClient()
+		if err != nil {
+			return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
+		}
+		r.logger.V(1).Info(
+			"Custom metric found", "metric", info.String(),
+			"client_name", metricClient.GetConfiguration().Name,
+			"client_host", metricClient.GetConfiguration().ClientConfig.Host,
+		)
+		return metricClient, nil
 	}
-	metricClient, err := metricClients.getBestMetricClient()
-	if err != nil {
-		return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
+
+	if r.resolver != nil {
+		entry, err := r.resolver.Resolve(ctx, info.Metric)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve custom metric %s: %w", info.Metric, err)
+		}
+		if entry != nil {
+			r.lock.Lock()
+			if _, exists := r.customMetrics[entry.Info]; !exists {
+				r.customMetrics[entry.Info] = newMetricClients()
+			}
+			r.customMetrics[entry.Info].addOrUpdateClient(entry.Client)
+			r.lock.Unlock()
+			r.logger.V(1).Info(
+				"Custom metric resolved lazily", "metric", entry.Info.String(),
+				"client_name", entry.Client.GetConfiguration().Name,
+			)
+			return entry.Client, nil
+		}
 	}
-	r.logger.V(1).Info(
-		"Custom metric found", "metric", info.String(),
-		"client_name", metricClient.GetConfiguration().Name,
-		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
-	)
-	return metricClient, nil
+
+	r.logger.V(1).Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
+	return nil, &errors.StatusError{
+		ErrStatus: metav1.Status{
+			Status:  metav1.StatusFailure,
+			Code:    http.StatusNotFound,
+			Reason:  metav1.StatusReasonNotFound,
+			Message: fmt.Sprintf("custom metric %s is not served by any metric client", info.Metric),
+		}}
 }
 
 func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (client.Interface, error) {
