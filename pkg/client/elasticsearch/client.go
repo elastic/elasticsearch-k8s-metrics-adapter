@@ -139,6 +139,10 @@ func NewElasticsearchClient(
 	if err != nil {
 		return nil, err
 	}
+	namer, err := config.NewNamer(metricServerCfg.Rename)
+	if err != nil {
+		return nil, fmt.Errorf("%s: failed to create namer: %v", metricServerCfg.Name, err)
+	}
 	return &MetricsClient{
 		logger:          logger,
 		Client:          esClient,
@@ -146,6 +150,9 @@ func NewElasticsearchClient(
 		client:          client,
 		mapper:          mapper,
 		tracer:          tracer,
+		metrics:         make(map[string]provider.CustomMetricInfo),
+		indexedMetrics:  make(map[string]MetricMetadata),
+		namer:           namer,
 	}, nil
 }
 

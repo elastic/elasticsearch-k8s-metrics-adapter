@@ -36,6 +36,13 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
+// numericTypes lists Elasticsearch numeric field types the adapter is willing to expose.
+// Kept aligned with allowedTypes; used as the `types=` filter for the _field_caps API.
+var numericTypes = []string{
+	"byte", "double", "float", "half_float",
+	"integer", "long", "scaled_float", "short", "unsigned_long",
+}
+
 var allowedTypes = map[string]struct{}{
 	"byte":          {},
 	"double":        {},
@@ -175,6 +182,108 @@ type recorder struct {
 	indexedMetrics map[string]MetricMetadata
 	namer          config.Namer
 }
+
+// ResolveCustomMetric checks whether the given metric is exposed by any configured
+// metric set on this client. It uses the _field_caps API (server-side filtered to
+// numeric types) which returns a much smaller payload than _mapping.
+//
+// On success, the metric is registered in the client's internal maps so subsequent
+// value queries via GetMetricByName / GetMetricBySelector can serve it without
+// re-querying ES.
+func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
+	// Fast path: already known.
+	mc.lock.RLock()
+	if info, ok := mc.metrics[metricName]; ok {
+		mc.lock.RUnlock()
+		return info, true, nil
+	}
+	mc.lock.RUnlock()
+
+	for _, metricSet := range mc.metricServerCfg.MetricSets {
+		// Skip metric sets whose configured patterns wouldn't accept this name.
+		fields := metricSet.Fields.FindMetadata(metricName)
+		if fields == nil {
+			continue
+		}
+
+		found, err := fieldExistsAsNumeric(ctx, mc.Client, metricSet.Indices, metricName)
+		if err != nil {
+			return provider.CustomMetricInfo{}, false, err
+		}
+		if !found {
+			continue
+		}
+
+		mc.lock.Lock()
+		// Recheck after acquiring write lock; another goroutine may have raced us.
+		if info, ok := mc.metrics[metricName]; ok {
+			mc.lock.Unlock()
+			return info, true, nil
+		}
+		info := provider.CustomMetricInfo{
+			GroupResource: schema.GroupResource{Group: "", Resource: "pods"},
+			Namespaced:    true,
+			Metric:        mc.namer.Register(metricName),
+		}
+		mc.metrics[metricName] = info
+		mc.indexedMetrics[metricName] = MetricMetadata{
+			Fields:  *fields,
+			Indices: metricSet.Indices,
+		}
+		mc.lock.Unlock()
+		return info, true, nil
+	}
+
+	return provider.CustomMetricInfo{}, false, nil
+}
+
+// fieldExistsAsNumeric calls _field_caps targeted at a single field name, with
+// server-side filtering to numeric types only. Returns true iff the response
+// contains an entry for metricName with at least one numeric type mapping.
+func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []string, metricName string) (bool, error) {
+	req := esapi.FieldCapsRequest{
+		Index:  indices,
+		Fields: []string{metricName},
+		// Types filter is applied server-side: non-numeric mappings are filtered out.
+		// Param is named "types" on the wire; the typed Go client exposes it via Types.
+		// IgnoreUnavailable + AllowNoIndices avoid errors on transient empty index patterns.
+		AllowNoIndices:    boolPtr(true),
+		IgnoreUnavailable: boolPtr(true),
+	}
+	// Set numeric types via the request's Types field if present, else via params.
+	req.Types = numericTypes
+
+	res, err := req.Do(ctx, esClient)
+	if err != nil {
+		return false, fmt.Errorf("_field_caps request failed: %w", err)
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		return false, fmt.Errorf("_field_caps returned %s", res.Status())
+	}
+
+	var r struct {
+		Fields map[string]map[string]struct {
+			Type string `json:"type"`
+		} `json:"fields"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return false, fmt.Errorf("error parsing _field_caps body: %w", err)
+	}
+
+	typesForField, ok := r.Fields[metricName]
+	if !ok || len(typesForField) == 0 {
+		return false, nil
+	}
+	for typeName := range typesForField {
+		if isTypeAllowed(typeName) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func boolPtr(b bool) *bool { return &b }
 
 func (r *recorder) _processMappingDocument(root string, d map[string]interface{}, fieldsSet config.FieldsSet, indices []string) {
 	for k, t := range d {
