@@ -22,8 +22,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/go-logr/logr"
+
+	cmprovider "sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	// Load all auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -57,6 +60,9 @@ const (
 	serviceType                  = "elasticsearch-k8s-metrics-adapter"
 	elastisearchMetricServerType = "elasticsearch"
 	customMetricServerType       = "custom"
+
+	discoveryModePeriodic = "periodic"
+	discoveryModeLazy     = "lazy"
 )
 
 var (
@@ -74,6 +80,10 @@ func main() {
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
 	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
 	cmd.Flags().IntVar(&cmd.ProfilingPort, "profiling-port", 0, "port to expose pprof profiling")
+	cmd.Flags().StringVar(&cmd.DiscoveryMode, "discovery-mode", discoveryModePeriodic,
+		"how Elasticsearch metric discovery is performed: 'periodic' (default) fetches the full index mapping every minute; 'lazy' resolves each metric on first request via the _field_caps API")
+	cmd.Flags().DurationVar(&cmd.NegativeCacheTTL, "lazy-negative-cache-ttl", registry.DefaultNegativeCacheTTL,
+		"how long the resolver caches a 'metric not found' result before retrying (lazy discovery mode only)")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)
 	if err != nil {
@@ -83,6 +93,14 @@ func main() {
 	flushLogs := log.Configure(cmd.Flags(), serviceType, serviceVersion)
 	defer flushLogs()
 	logger = log.ForPackage("main")
+
+	switch cmd.DiscoveryMode {
+	case discoveryModePeriodic, discoveryModeLazy:
+	default:
+		logErrorAndExit(
+			fmt.Errorf("invalid value %q (expected %q or %q)", cmd.DiscoveryMode, discoveryModePeriodic, discoveryModeLazy),
+			"Invalid --discovery-mode")
+	}
 
 	adapterCfg, err := config.Parse()
 	if err != nil {
@@ -109,9 +127,43 @@ func main() {
 		logErrorAndExit(err, "Unable to create metrics provider")
 	}
 
-	scheduler := scheduler.NewScheduler(metricsClients...)
+	// In lazy mode, Elasticsearch clients skip the periodic scheduler entirely.
+	// Other client types (custom_api) still go through periodic discovery because
+	// their list endpoints are cheap. The lazy resolver is consulted only on
+	// registry misses.
+	var scheduledClients []client.Interface
+	var lazyClients []client.Interface
+	if cmd.DiscoveryMode == discoveryModeLazy {
+		for _, c := range metricsClients {
+			if c.GetConfiguration().ServerType == elastisearchMetricServerType {
+				lazyClients = append(lazyClients, c)
+			} else {
+				scheduledClients = append(scheduledClients, c)
+			}
+		}
+		logger.Info("Discovery mode is lazy",
+			"lazy_clients", len(lazyClients),
+			"scheduled_clients", len(scheduledClients),
+			"negative_cache_ttl", cmd.NegativeCacheTTL,
+		)
+	} else {
+		scheduledClients = metricsClients
+		logger.Info("Discovery mode is periodic")
+	}
+
 	metricsRegistry := registry.NewRegistry()
-	scheduler.
+	if len(lazyClients) > 0 {
+		metricsRegistry.WithResolver(registry.NewResolver(lazyClients, cmd.NegativeCacheTTL))
+		// Lazy clients never receive a periodic "first sync" event, so seed the
+		// monitoring server's readiness counters with a synthetic empty update so
+		// /readyz doesn't block indefinitely on them.
+		for _, c := range lazyClients {
+			monitoringServer.UpdateCustomMetrics(c, map[cmprovider.CustomMetricInfo]struct{}{})
+		}
+	}
+
+	sched := scheduler.NewScheduler(scheduledClients...)
+	sched.
 		WithMetricListeners(monitoringServer, metricsRegistry).
 		WithErrorListeners(monitoringServer).
 		Start().
@@ -138,6 +190,8 @@ type ElasticsearchAdapter struct {
 	PrometheusMetricsEnabled bool
 	MonitoringPort           int
 	ProfilingPort            int
+	DiscoveryMode            string
+	NegativeCacheTTL         time.Duration
 }
 
 func (a *ElasticsearchAdapter) newMetricsClients(adapterCfg *config.Config, tracer *apm.Tracer) ([]client.Interface, error) {
