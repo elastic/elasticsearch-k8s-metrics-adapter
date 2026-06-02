@@ -63,7 +63,6 @@ const (
 	customMetricServerType       = "custom"
 
 	discoveryModePeriodic = "periodic"
-	discoveryModeLazy     = "lazy"
 	discoveryModeHPA      = "hpa"
 )
 
@@ -85,10 +84,9 @@ func main() {
 	cmd.Flags().StringVar(&cmd.DiscoveryMode, "discovery-mode", discoveryModePeriodic,
 		"how Elasticsearch metric discovery is performed: "+
 			"'periodic' (default) fetches the full index mapping every minute; "+
-			"'hpa' watches HorizontalPodAutoscaler objects and resolves only the metrics they reference via the _field_caps API; "+
-			"'lazy' resolves each metric on first request via the _field_caps API")
+			"'hpa' watches HorizontalPodAutoscaler objects and resolves only the metrics they reference via the _field_caps API")
 	cmd.Flags().DurationVar(&cmd.NegativeCacheTTL, "negative-cache-ttl", registry.DefaultNegativeCacheTTL,
-		"how long the resolver caches a 'metric not found' result before retrying (lazy and hpa discovery modes only)")
+		"how long the resolver caches a 'metric not found' result before retrying (hpa discovery mode only)")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)
 	if err != nil {
@@ -100,10 +98,10 @@ func main() {
 	logger = log.ForPackage("main")
 
 	switch cmd.DiscoveryMode {
-	case discoveryModePeriodic, discoveryModeLazy, discoveryModeHPA:
+	case discoveryModePeriodic, discoveryModeHPA:
 	default:
 		logErrorAndExit(
-			fmt.Errorf("invalid value %q (expected %q, %q or %q)", cmd.DiscoveryMode, discoveryModePeriodic, discoveryModeHPA, discoveryModeLazy),
+			fmt.Errorf("invalid value %q (expected %q or %q)", cmd.DiscoveryMode, discoveryModePeriodic, discoveryModeHPA),
 			"Invalid --discovery-mode")
 	}
 
@@ -132,13 +130,13 @@ func main() {
 		logErrorAndExit(err, "Unable to create metrics provider")
 	}
 
-	// In lazy and hpa modes, Elasticsearch clients skip the periodic scheduler
-	// (and its full _mapping scan) entirely; metrics are resolved on demand via
-	// _field_caps. Other client types (custom_api) still go through periodic
-	// discovery because their list endpoints are cheap.
+	// In hpa mode, Elasticsearch clients skip the periodic scheduler (and its
+	// full _mapping scan) entirely; metrics are resolved on demand via
+	// _field_caps, driven by the HPA watcher. Other client types (custom_api)
+	// still go through periodic discovery because their list endpoints are cheap.
 	var scheduledClients []client.Interface
 	var resolverClients []client.Interface
-	if cmd.DiscoveryMode == discoveryModeLazy || cmd.DiscoveryMode == discoveryModeHPA {
+	if cmd.DiscoveryMode == discoveryModeHPA {
 		for _, c := range metricsClients {
 			if c.GetConfiguration().ServerType == elastisearchMetricServerType {
 				resolverClients = append(resolverClients, c)
@@ -146,7 +144,7 @@ func main() {
 				scheduledClients = append(scheduledClients, c)
 			}
 		}
-		logger.Info("Discovery mode is "+cmd.DiscoveryMode,
+		logger.Info("Discovery mode is hpa",
 			"resolver_clients", len(resolverClients),
 			"scheduled_clients", len(scheduledClients),
 			"negative_cache_ttl", cmd.NegativeCacheTTL,

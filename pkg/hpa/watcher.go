@@ -100,7 +100,9 @@ func (w *Watcher) onUpsert(obj interface{}) {
 		w.logger.Error(err, "failed to derive HPA key")
 		return
 	}
-	added, removed := w.tracker.upsert(key, metricNames(hpa))
+	names := metricNames(hpa)
+	w.logger.Info("Observed HPA", "hpa", key, "custom_metrics", names)
+	added, removed := w.tracker.upsert(key, names)
 	w.advertise(added)
 	w.withdraw(removed)
 }
@@ -131,11 +133,11 @@ func (w *Watcher) advertise(names []string) {
 		cancel()
 		switch {
 		case err != nil:
-			w.logger.Error(err, "failed to advertise metric referenced by an HPA", "metric", name)
+			w.logger.Error(err, "Failed to advertise metric referenced by an HPA", "metric", name)
 		case !found:
 			w.logger.Info("HPA references a metric not served by any client", "metric", name)
 		default:
-			w.logger.V(1).Info("Advertised metric referenced by an HPA", "metric", name)
+			w.logger.Info("Advertised metric referenced by an HPA", "metric", name)
 		}
 	}
 }
@@ -143,7 +145,7 @@ func (w *Watcher) advertise(names []string) {
 func (w *Watcher) withdraw(names []string) {
 	for _, name := range names {
 		w.registry.Withdraw(name)
-		w.logger.V(1).Info("Withdrew metric no longer referenced by any HPA", "metric", name)
+		w.logger.Info("Withdrew metric no longer referenced by any HPA", "metric", name)
 	}
 }
 

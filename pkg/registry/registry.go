@@ -188,46 +188,30 @@ func getRemovedExternalMetrics(old map[provider.ExternalMetricInfo]struct{}, new
 	return outdated
 }
 
-func (r *Registry) GetCustomMetricClient(ctx context.Context, info provider.CustomMetricInfo) (client.Interface, error) {
+func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client.Interface, error) {
 	r.lock.RLock()
+	defer r.lock.RUnlock()
 	metricClients, ok := r.customMetrics[info]
-	r.lock.RUnlock()
-	if ok {
-		metricClient, err := metricClients.getBestMetricClient()
-		if err != nil {
-			return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
-		}
-		r.logger.V(1).Info(
-			"Custom metric found", "metric", info.String(),
-			"client_name", metricClient.GetConfiguration().Name,
-			"client_host", metricClient.GetConfiguration().ClientConfig.Host,
-		)
-		return metricClient, nil
+	if !ok {
+		r.logger.V(1).Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
+		return nil, &errors.StatusError{
+			ErrStatus: metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    http.StatusNotFound,
+				Reason:  metav1.StatusReasonNotFound,
+				Message: fmt.Sprintf("custom metric %s is not served by any metric client", info.Metric),
+			}}
 	}
-
-	if r.resolver != nil {
-		entry, err := r.resolver.Resolve(ctx, info.Metric)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve custom metric %s: %w", info.Metric, err)
-		}
-		if entry != nil {
-			r.registerResolved(entry)
-			r.logger.V(1).Info(
-				"Custom metric resolved lazily", "metric", entry.Info.String(),
-				"client_name", entry.Client.GetConfiguration().Name,
-			)
-			return entry.Client, nil
-		}
+	metricClient, err := metricClients.getBestMetricClient()
+	if err != nil {
+		return nil, fmt.Errorf("no backend for custom metric: %v", info.Metric)
 	}
-
-	r.logger.V(1).Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
-	return nil, &errors.StatusError{
-		ErrStatus: metav1.Status{
-			Status:  metav1.StatusFailure,
-			Code:    http.StatusNotFound,
-			Reason:  metav1.StatusReasonNotFound,
-			Message: fmt.Sprintf("custom metric %s is not served by any metric client", info.Metric),
-		}}
+	r.logger.V(1).Info(
+		"Custom metric found", "metric", info.String(),
+		"client_name", metricClient.GetConfiguration().Name,
+		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
+	)
+	return metricClient, nil
 }
 
 // registerResolved adds a resolved metric to the served set and indexes it by

@@ -18,7 +18,6 @@
 package registry
 
 import (
-	"context"
 	"net/http"
 	"testing"
 
@@ -81,12 +80,12 @@ func TestRegistry_UpdateMetrics(t *testing.T) {
 				)
 
 				// custom metric2 is served by client2
-				c1, err := r.GetCustomMetricClient(context.Background(), provider.CustomMetricInfo{Metric: "c_metric2"})
+				c1, err := r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "c_metric2"})
 				assert.NoError(t, err)
 				assert.Equal(t, "client2", c1.GetConfiguration().Name, "c_metric2 should be served by client2")
 
 				// custom metricX is served by no metric client.
-				c2, err := r.GetCustomMetricClient(context.Background(), provider.CustomMetricInfo{Metric: "metricX"})
+				c2, err := r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "metricX"})
 				assert.Equal(t, &errors.StatusError{
 					ErrStatus: metav1.Status{
 						Status:  metav1.StatusFailure,
@@ -97,7 +96,7 @@ func TestRegistry_UpdateMetrics(t *testing.T) {
 				assert.Nil(t, c2)
 
 				// custom metric6 is served by client1
-				c6, err := r.GetCustomMetricClient(context.Background(), provider.CustomMetricInfo{Metric: "c_metric6"})
+				c6, err := r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "c_metric6"})
 				assert.NoError(t, err)
 				assert.Equal(t, "client1", c6.GetConfiguration().Name, "c_metric6 should be served by client1")
 

@@ -246,12 +246,16 @@ func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []
 		Fields: []string{metricName},
 		// Types filter is applied server-side: non-numeric mappings are filtered out.
 		// Param is named "types" on the wire; the typed Go client exposes it via Types.
+		Types: numericTypes,
 		// IgnoreUnavailable + AllowNoIndices avoid errors on transient empty index patterns.
 		AllowNoIndices:    boolPtr(true),
 		IgnoreUnavailable: boolPtr(true),
+		// filter_path=fields drops the top-level "indices" array from the
+		// response. For an index pattern like metrics-* that matches thousands
+		// of data-stream backing indices, that array dominates the payload even
+		// though we only care about the single field's types.
+		FilterPath: []string{"fields"},
 	}
-	// Set numeric types via the request's Types field if present, else via params.
-	req.Types = numericTypes
 
 	res, err := req.Do(ctx, esClient)
 	if err != nil {
