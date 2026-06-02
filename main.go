@@ -47,6 +47,7 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/custom_api"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client/elasticsearch"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
+	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/hpa"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/log"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/monitoring"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/profiling"
@@ -63,6 +64,7 @@ const (
 
 	discoveryModePeriodic = "periodic"
 	discoveryModeLazy     = "lazy"
+	discoveryModeHPA      = "hpa"
 )
 
 var (
@@ -81,9 +83,12 @@ func main() {
 	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
 	cmd.Flags().IntVar(&cmd.ProfilingPort, "profiling-port", 0, "port to expose pprof profiling")
 	cmd.Flags().StringVar(&cmd.DiscoveryMode, "discovery-mode", discoveryModePeriodic,
-		"how Elasticsearch metric discovery is performed: 'periodic' (default) fetches the full index mapping every minute; 'lazy' resolves each metric on first request via the _field_caps API")
-	cmd.Flags().DurationVar(&cmd.NegativeCacheTTL, "lazy-negative-cache-ttl", registry.DefaultNegativeCacheTTL,
-		"how long the resolver caches a 'metric not found' result before retrying (lazy discovery mode only)")
+		"how Elasticsearch metric discovery is performed: "+
+			"'periodic' (default) fetches the full index mapping every minute; "+
+			"'hpa' watches HorizontalPodAutoscaler objects and resolves only the metrics they reference via the _field_caps API; "+
+			"'lazy' resolves each metric on first request via the _field_caps API")
+	cmd.Flags().DurationVar(&cmd.NegativeCacheTTL, "negative-cache-ttl", registry.DefaultNegativeCacheTTL,
+		"how long the resolver caches a 'metric not found' result before retrying (lazy and hpa discovery modes only)")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)
 	if err != nil {
@@ -95,10 +100,10 @@ func main() {
 	logger = log.ForPackage("main")
 
 	switch cmd.DiscoveryMode {
-	case discoveryModePeriodic, discoveryModeLazy:
+	case discoveryModePeriodic, discoveryModeLazy, discoveryModeHPA:
 	default:
 		logErrorAndExit(
-			fmt.Errorf("invalid value %q (expected %q or %q)", cmd.DiscoveryMode, discoveryModePeriodic, discoveryModeLazy),
+			fmt.Errorf("invalid value %q (expected %q, %q or %q)", cmd.DiscoveryMode, discoveryModePeriodic, discoveryModeHPA, discoveryModeLazy),
 			"Invalid --discovery-mode")
 	}
 
@@ -127,22 +132,22 @@ func main() {
 		logErrorAndExit(err, "Unable to create metrics provider")
 	}
 
-	// In lazy mode, Elasticsearch clients skip the periodic scheduler entirely.
-	// Other client types (custom_api) still go through periodic discovery because
-	// their list endpoints are cheap. The lazy resolver is consulted only on
-	// registry misses.
+	// In lazy and hpa modes, Elasticsearch clients skip the periodic scheduler
+	// (and its full _mapping scan) entirely; metrics are resolved on demand via
+	// _field_caps. Other client types (custom_api) still go through periodic
+	// discovery because their list endpoints are cheap.
 	var scheduledClients []client.Interface
-	var lazyClients []client.Interface
-	if cmd.DiscoveryMode == discoveryModeLazy {
+	var resolverClients []client.Interface
+	if cmd.DiscoveryMode == discoveryModeLazy || cmd.DiscoveryMode == discoveryModeHPA {
 		for _, c := range metricsClients {
 			if c.GetConfiguration().ServerType == elastisearchMetricServerType {
-				lazyClients = append(lazyClients, c)
+				resolverClients = append(resolverClients, c)
 			} else {
 				scheduledClients = append(scheduledClients, c)
 			}
 		}
-		logger.Info("Discovery mode is lazy",
-			"lazy_clients", len(lazyClients),
+		logger.Info("Discovery mode is "+cmd.DiscoveryMode,
+			"resolver_clients", len(resolverClients),
 			"scheduled_clients", len(scheduledClients),
 			"negative_cache_ttl", cmd.NegativeCacheTTL,
 		)
@@ -152,14 +157,23 @@ func main() {
 	}
 
 	metricsRegistry := registry.NewRegistry()
-	if len(lazyClients) > 0 {
-		metricsRegistry.WithResolver(registry.NewResolver(lazyClients, cmd.NegativeCacheTTL))
-		// Lazy clients never receive a periodic "first sync" event, so seed the
-		// monitoring server's readiness counters with a synthetic empty update so
-		// /readyz doesn't block indefinitely on them.
-		for _, c := range lazyClients {
+	if len(resolverClients) > 0 {
+		metricsRegistry.WithResolver(registry.NewResolver(resolverClients, cmd.NegativeCacheTTL))
+		// Resolver-backed clients never receive a periodic "first sync" event, so
+		// seed the monitoring server's readiness counters with a synthetic empty
+		// update so /readyz doesn't block indefinitely on them.
+		for _, c := range resolverClients {
 			monitoringServer.UpdateCustomMetrics(c, map[cmprovider.CustomMetricInfo]struct{}{})
 		}
+	}
+
+	// In hpa mode, watch HorizontalPodAutoscaler objects and proactively
+	// advertise the metrics they reference. This is required because the
+	// Kubernetes API server only routes a custom metric request to the adapter
+	// if the metric is already advertised — a purely lazy resolve-on-request
+	// approach returns 404 before reaching us.
+	if cmd.DiscoveryMode == discoveryModeHPA {
+		cmd.startHPAWatcher(metricsRegistry)
 	}
 
 	sched := scheduler.NewScheduler(scheduledClients...)
@@ -192,6 +206,28 @@ type ElasticsearchAdapter struct {
 	ProfilingPort            int
 	DiscoveryMode            string
 	NegativeCacheTTL         time.Duration
+}
+
+// hpaWatcherResyncPeriod drives the informer's full relist, which also retries
+// any metric resolutions that failed transiently.
+const hpaWatcherResyncPeriod = 10 * time.Minute
+
+// startHPAWatcher builds a Kubernetes clientset and starts the HPA watcher,
+// blocking until its cache has synced so the registry is warm before the API
+// server starts routing metric requests.
+func (a *ElasticsearchAdapter) startHPAWatcher(metricsRegistry *registry.Registry) {
+	clientCfg, err := a.ClientConfig()
+	if err != nil {
+		logErrorAndExit(err, "Unable to construct Kubernetes client config for HPA watcher")
+	}
+	clientset, err := kubernetes.NewForConfig(clientCfg)
+	if err != nil {
+		logErrorAndExit(err, "Unable to construct Kubernetes clientset for HPA watcher")
+	}
+	watcher := hpa.NewWatcher(clientset, metricsRegistry, hpaWatcherResyncPeriod)
+	if err := watcher.Start(context.Background()); err != nil {
+		logErrorAndExit(err, "HPA watcher failed to start")
+	}
 }
 
 func (a *ElasticsearchAdapter) newMetricsClients(adapterCfg *config.Config, tracer *apm.Tracer) ([]client.Interface, error) {

@@ -44,17 +44,23 @@ type Registry struct {
 	customMetrics   map[provider.CustomMetricInfo]*metricClients
 	externalMetrics map[provider.ExternalMetricInfo]*metricClients
 
-	// resolver, when set, is consulted on cache misses to lazily discover and
-	// register metrics on demand. Used in lazy discovery mode.
+	// advertisedByName indexes the custom metrics registered through Advertise
+	// (HPA-driven discovery) by their metric name, so they can be withdrawn by
+	// name when no HPA references them any more.
+	advertisedByName map[string]provider.CustomMetricInfo
+
+	// resolver, when set, is consulted to discover and register metrics on
+	// demand — either lazily on a registry miss, or proactively via Advertise.
 	resolver *Resolver
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		logger:          log.ForPackage("registry"),
-		lock:            sync.RWMutex{},
-		customMetrics:   make(map[provider.CustomMetricInfo]*metricClients),
-		externalMetrics: make(map[provider.ExternalMetricInfo]*metricClients),
+		logger:           log.ForPackage("registry"),
+		lock:             sync.RWMutex{},
+		customMetrics:    make(map[provider.CustomMetricInfo]*metricClients),
+		externalMetrics:  make(map[provider.ExternalMetricInfo]*metricClients),
+		advertisedByName: make(map[string]provider.CustomMetricInfo),
 	}
 }
 
@@ -205,12 +211,7 @@ func (r *Registry) GetCustomMetricClient(ctx context.Context, info provider.Cust
 			return nil, fmt.Errorf("failed to resolve custom metric %s: %w", info.Metric, err)
 		}
 		if entry != nil {
-			r.lock.Lock()
-			if _, exists := r.customMetrics[entry.Info]; !exists {
-				r.customMetrics[entry.Info] = newMetricClients()
-			}
-			r.customMetrics[entry.Info].addOrUpdateClient(entry.Client)
-			r.lock.Unlock()
+			r.registerResolved(entry)
 			r.logger.V(1).Info(
 				"Custom metric resolved lazily", "metric", entry.Info.String(),
 				"client_name", entry.Client.GetConfiguration().Name,
@@ -227,6 +228,58 @@ func (r *Registry) GetCustomMetricClient(ctx context.Context, info provider.Cust
 			Reason:  metav1.StatusReasonNotFound,
 			Message: fmt.Sprintf("custom metric %s is not served by any metric client", info.Metric),
 		}}
+}
+
+// registerResolved adds a resolved metric to the served set and indexes it by
+// name so it can later be withdrawn. Safe for concurrent use.
+func (r *Registry) registerResolved(entry *ResolvedEntry) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if _, exists := r.customMetrics[entry.Info]; !exists {
+		r.customMetrics[entry.Info] = newMetricClients()
+	}
+	r.customMetrics[entry.Info].addOrUpdateClient(entry.Client)
+	r.advertisedByName[entry.Info.Metric] = entry.Info
+}
+
+// Advertise proactively resolves a metric by name and registers it so it is
+// served and listed by ListAllCustomMetrics. Used by HPA-driven discovery to
+// populate the registry before the first HPA reconcile arrives.
+//
+// Returns true if the metric was resolved and advertised, false if no client
+// serves it. A non-nil error indicates a transient resolution failure.
+func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, error) {
+	if r.resolver == nil {
+		return false, fmt.Errorf("no resolver configured")
+	}
+	entry, err := r.resolver.Resolve(ctx, metricName)
+	if err != nil {
+		return false, err
+	}
+	if entry == nil {
+		return false, nil
+	}
+	r.registerResolved(entry)
+	r.logger.V(1).Info(
+		"Custom metric advertised", "metric", entry.Info.String(),
+		"client_name", entry.Client.GetConfiguration().Name,
+	)
+	return true, nil
+}
+
+// Withdraw removes a previously advertised metric from the served set. It is a
+// no-op if the metric was not advertised. Used when no HPA references the
+// metric any more.
+func (r *Registry) Withdraw(metricName string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	info, ok := r.advertisedByName[metricName]
+	if !ok {
+		return
+	}
+	delete(r.customMetrics, info)
+	delete(r.advertisedByName, metricName)
+	r.logger.V(1).Info("Custom metric withdrawn", "metric", metricName)
 }
 
 func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (client.Interface, error) {
