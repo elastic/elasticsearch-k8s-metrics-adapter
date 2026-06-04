@@ -28,6 +28,7 @@ import (
 	"github.com/itchyny/gojq"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	esv8 "github.com/elastic/go-elasticsearch/v9"
@@ -36,24 +37,22 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
-// numericTypes lists Elasticsearch numeric field types the adapter is willing to expose.
-// Kept aligned with allowedTypes; used as the `types=` filter for the _field_caps API.
+// numericTypes is the single source of truth for the Elasticsearch numeric
+// field types the adapter is willing to expose. It is used directly as the
+// `types=` filter for the _field_caps API, and allowedTypes is derived from it
+// for membership checks.
 var numericTypes = []string{
 	"byte", "double", "float", "half_float",
 	"integer", "long", "scaled_float", "short", "unsigned_long",
 }
 
-var allowedTypes = map[string]struct{}{
-	"byte":          {},
-	"double":        {},
-	"float":         {},
-	"half_float":    {},
-	"integer":       {},
-	"long":          {},
-	"scaled_float":  {},
-	"short":         {},
-	"unsigned_long": {},
-}
+var allowedTypes = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(numericTypes))
+	for _, t := range numericTypes {
+		m[t] = struct{}{}
+	}
+	return m
+}()
 
 func isTypeAllowed(t string) bool {
 	_, ok := allowedTypes[t]
@@ -261,8 +260,8 @@ func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []
 		// Param is named "types" on the wire; the typed Go client exposes it via Types.
 		Types: numericTypes,
 		// IgnoreUnavailable + AllowNoIndices avoid errors on transient empty index patterns.
-		AllowNoIndices:    boolPtr(true),
-		IgnoreUnavailable: boolPtr(true),
+		AllowNoIndices:    ptr.To(true),
+		IgnoreUnavailable: ptr.To(true),
 		// filter_path=fields drops the top-level "indices" array from the
 		// response. For an index pattern like metrics-* that matches thousands
 		// of data-stream backing indices, that array dominates the payload even
@@ -299,8 +298,6 @@ func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []
 	}
 	return false, nil
 }
-
-func boolPtr(b bool) *bool { return &b }
 
 func (r *recorder) _processMappingDocument(root string, d map[string]interface{}, fieldsSet config.FieldsSet, indices []string) {
 	for k, t := range d {
