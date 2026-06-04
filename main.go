@@ -85,8 +85,6 @@ func main() {
 		"how Elasticsearch metric discovery is performed: "+
 			"'periodic' (default) fetches the full index mapping every minute; "+
 			"'hpa' watches HorizontalPodAutoscaler objects and resolves only the metrics they reference via the _field_caps API")
-	cmd.Flags().DurationVar(&cmd.NegativeCacheTTL, "negative-cache-ttl", registry.DefaultNegativeCacheTTL,
-		"how long the resolver caches a 'metric not found' result before retrying (hpa discovery mode only)")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)
 	if err != nil {
@@ -147,7 +145,6 @@ func main() {
 		logger.Info("Discovery mode is hpa",
 			"resolver_clients", len(resolverClients),
 			"scheduled_clients", len(scheduledClients),
-			"negative_cache_ttl", cmd.NegativeCacheTTL,
 		)
 	} else {
 		scheduledClients = metricsClients
@@ -156,7 +153,7 @@ func main() {
 
 	metricsRegistry := registry.NewRegistry()
 	if len(resolverClients) > 0 {
-		metricsRegistry.WithResolver(registry.NewResolver(resolverClients, cmd.NegativeCacheTTL))
+		metricsRegistry.WithResolverClients(resolverClients)
 		// Resolver-backed clients never receive a periodic "first sync" event, so
 		// seed the monitoring server's readiness counters with a synthetic empty
 		// update so /readyz doesn't block indefinitely on them.
@@ -208,11 +205,10 @@ type ElasticsearchAdapter struct {
 	MonitoringPort           int
 	ProfilingPort            int
 	DiscoveryMode            string
-	NegativeCacheTTL         time.Duration
 }
 
-// hpaWatcherResyncPeriod drives the informer's full relist, which also retries
-// any metric resolutions that failed transiently.
+// hpaWatcherResyncPeriod drives the informer's full relist, which re-delivers
+// every HPA and so retries any metric resolutions that failed transiently.
 const hpaWatcherResyncPeriod = 10 * time.Minute
 
 // startHPAWatcher builds a Kubernetes clientset and starts the HPA watcher,

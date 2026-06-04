@@ -70,9 +70,10 @@ type Registry struct {
 	// metric name so they can be withdrawn by name when no HPA references them.
 	advertisedByName map[string]provider.CustomMetricInfo
 
-	// resolver performs on-demand _field_caps lookups for individual metric
-	// names. Set in hpa discovery mode; nil in periodic mode.
-	resolver *Resolver
+	// resolverClients are consulted in order by Advertise to find which client
+	// serves a metric name referenced by an HPA, performing the on-demand
+	// _field_caps lookup. Non-empty only in hpa discovery mode.
+	resolverClients []client.Interface
 }
 
 func NewRegistry() *Registry {
@@ -85,10 +86,11 @@ func NewRegistry() *Registry {
 	}
 }
 
-// WithResolver attaches a Resolver used by Advertise to perform _field_caps
-// lookups when the HPA watcher discovers a new metric name.
-func (r *Registry) WithResolver(resolver *Resolver) *Registry {
-	r.resolver = resolver
+// WithResolverClients registers the clients consulted by Advertise to resolve a
+// metric name on demand (via _field_caps) when the HPA watcher discovers it.
+// Clients are tried in order; the first to report the metric as served wins.
+func (r *Registry) WithResolverClients(clients []client.Interface) *Registry {
+	r.resolverClients = clients
 	return r
 }
 
@@ -244,39 +246,46 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 // customMetrics is what makes the metric appear in ListAllCustomMetrics, which
 // is what the K8s API server needs before it will route requests for this metric
 // to the adapter.
-func (r *Registry) registerResolved(entry *ResolvedEntry) {
+func (r *Registry) registerResolved(info provider.CustomMetricInfo, c client.Interface) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if _, exists := r.customMetrics[entry.Info]; !exists {
-		r.customMetrics[entry.Info] = newMetricClients()
+	if _, exists := r.customMetrics[info]; !exists {
+		r.customMetrics[info] = newMetricClients()
 	}
-	r.customMetrics[entry.Info].addOrUpdateClient(entry.Client)
-	r.advertisedByName[entry.Info.Metric] = entry.Info
+	r.customMetrics[info].addOrUpdateClient(c)
+	r.advertisedByName[info.Metric] = info
 }
 
-// Advertise proactively resolves a metric by name and registers it so it is
-// served and listed by ListAllCustomMetrics. Used by HPA-driven discovery to
-// populate the registry before the first HPA reconcile arrives.
+// Advertise resolves a metric by name — consulting each resolver client in turn
+// until one reports it served — and registers it so it is listed by
+// ListAllCustomMetrics and routed by GetCustomMetricClient. Used by HPA-driven
+// discovery to populate the registry before the first request for the metric
+// arrives.
+//
+// Advertise is called serially by the HPA watcher, once per newly-referenced
+// metric name (the watcher's reference tracker dedupes), so no per-name caching
+// or call coalescing is needed here.
 //
 // Returns true if the metric was resolved and advertised, false if no client
-// serves it. A non-nil error indicates a transient resolution failure.
+// serves it. A non-nil error indicates a transient resolution failure; the
+// caller should retry rather than treat the metric as absent.
 func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, error) {
-	if r.resolver == nil {
-		return false, fmt.Errorf("no resolver configured")
+	for _, c := range r.resolverClients {
+		info, found, err := c.ResolveCustomMetric(ctx, metricName)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			continue
+		}
+		r.registerResolved(info, c)
+		r.logger.V(1).Info(
+			"Custom metric advertised", "metric", info.String(),
+			"client_name", c.GetConfiguration().Name,
+		)
+		return true, nil
 	}
-	entry, err := r.resolver.Resolve(ctx, metricName)
-	if err != nil {
-		return false, err
-	}
-	if entry == nil {
-		return false, nil
-	}
-	r.registerResolved(entry)
-	r.logger.V(1).Info(
-		"Custom metric advertised", "metric", entry.Info.String(),
-		"client_name", entry.Client.GetConfiguration().Name,
-	)
-	return true, nil
+	return false, nil
 }
 
 // Withdraw removes a previously advertised metric from the served set. It is a
