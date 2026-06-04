@@ -34,7 +34,7 @@ import (
 // DefaultNegativeCacheTTL is how long an unresolved metric stays "known missing".
 // Short enough that newly-indexed fields are picked up quickly, long enough that
 // a misconfigured HPA polling every reconcile doesn't hammer ES.
-const DefaultNegativeCacheTTL = 30 * time.Second
+const DefaultNegativeCacheTTL = 1 * time.Minute
 
 // ResolvedEntry is what the resolver hands back to the registry on a successful
 // resolution: the canonical CustomMetricInfo (post-rename) and the client that

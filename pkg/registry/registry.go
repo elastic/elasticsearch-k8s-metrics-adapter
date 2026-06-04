@@ -34,23 +34,44 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
 )
 
-// Registry maintains a list of the available metrics and the associated metrics sources.
-// The aim of the registry is to cache the metrics lists as they can be expensive to retrieve and compute from
-// the various sources.
+// Registry is the central routing table of the adapter.
+//
+// It has two responsibilities:
+//
+//  1. Advertisement — it answers the Kubernetes custom metrics API's
+//     ListAllCustomMetrics / ListAllExternalMetrics calls.  The K8s API server
+//     uses these lists to build its own resource catalogue; a metric that is
+//     not listed here will get a 404 from the API server before the request
+//     ever reaches the adapter.
+//
+//  2. Routing — when an HPA requests the value of metric X, the registry
+//     returns the backend client (e.g. the Elasticsearch client) responsible
+//     for fetching it.
+//
+// Both responsibilities are served by the same map (customMetrics / externalMetrics):
+// the keys are what get listed; the values are the clients used for routing.
+//
+// Metrics are added to the registry in two ways:
+//   - Periodically, via UpdateCustomMetrics / UpdateExternalMetrics, called by
+//     the scheduler after each discovery cycle (used by custom_api clients).
+//   - Proactively, via Advertise, called by the HPA watcher when it sees a new
+//     metric referenced by an HPA (used by Elasticsearch clients in hpa mode).
 type Registry struct {
 	logger logr.Logger
 	lock   sync.RWMutex
 
+	// customMetrics is simultaneously the advertisement catalogue
+	// (ListAllCustomMetrics iterates it) and the routing table
+	// (GetCustomMetricClient looks up in it).
 	customMetrics   map[provider.CustomMetricInfo]*metricClients
 	externalMetrics map[provider.ExternalMetricInfo]*metricClients
 
-	// advertisedByName indexes the custom metrics registered through Advertise
-	// (HPA-driven discovery) by their metric name, so they can be withdrawn by
-	// name when no HPA references them any more.
+	// advertisedByName indexes metrics registered via Advertise by their plain
+	// metric name so they can be withdrawn by name when no HPA references them.
 	advertisedByName map[string]provider.CustomMetricInfo
 
-	// resolver, when set, is consulted to discover and register metrics on
-	// demand — either lazily on a registry miss, or proactively via Advertise.
+	// resolver performs on-demand _field_caps lookups for individual metric
+	// names. Set in hpa discovery mode; nil in periodic mode.
 	resolver *Resolver
 }
 
@@ -64,7 +85,8 @@ func NewRegistry() *Registry {
 	}
 }
 
-// WithResolver attaches a Resolver to enable lazy lookup on registry misses.
+// WithResolver attaches a Resolver used by Advertise to perform _field_caps
+// lookups when the HPA watcher discovers a new metric name.
 func (r *Registry) WithResolver(resolver *Resolver) *Registry {
 	r.resolver = resolver
 	return r
@@ -188,6 +210,9 @@ func getRemovedExternalMetrics(old map[provider.ExternalMetricInfo]struct{}, new
 	return outdated
 }
 
+// GetCustomMetricClient returns the backend client that can fetch the value of
+// the given custom metric. It is called on every HPA reconcile. Returns a 404
+// StatusError if the metric is not in the registry (i.e. was not advertised).
 func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client.Interface, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
@@ -214,8 +239,11 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 	return metricClient, nil
 }
 
-// registerResolved adds a resolved metric to the served set and indexes it by
-// name so it can later be withdrawn. Safe for concurrent use.
+// registerResolved writes a successfully resolved metric into both the routing
+// table (customMetrics) and the name index (advertisedByName). Writing to
+// customMetrics is what makes the metric appear in ListAllCustomMetrics, which
+// is what the K8s API server needs before it will route requests for this metric
+// to the adapter.
 func (r *Registry) registerResolved(entry *ResolvedEntry) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -292,6 +320,9 @@ func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (cl
 	return metricClient, nil
 }
 
+// ListAllCustomMetrics returns every metric currently in the registry.
+// The K8s API server polls this to build the list of routes it will forward to
+// the adapter; a metric absent from this list gets a 404 before reaching us.
 func (r *Registry) ListAllCustomMetrics() []provider.CustomMetricInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()

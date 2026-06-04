@@ -101,7 +101,7 @@ func (w *Watcher) onUpsert(obj interface{}) {
 		return
 	}
 	names := metricNames(hpa)
-	w.logger.Info("Observed HPA", "hpa", key, "custom_metrics", names)
+	w.logger.V(1).Info("Observed HPA", "hpa", key, "custom_metrics", names)
 	added, removed := w.tracker.upsert(key, names)
 	w.advertise(added)
 	w.withdraw(removed)

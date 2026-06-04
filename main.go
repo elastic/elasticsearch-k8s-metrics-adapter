@@ -162,6 +162,11 @@ func main() {
 		// update so /readyz doesn't block indefinitely on them.
 		for _, c := range resolverClients {
 			monitoringServer.UpdateCustomMetrics(c, map[cmprovider.CustomMetricInfo]struct{}{})
+			// Seed external metrics too: MetricTypes defaults to "serve all types",
+			// so the monitoring server tracks external metrics for the ES client even
+			// though the ES client doesn't support them. Without this, the external
+			// success counter stays 0 and /readyz returns 503 indefinitely.
+			monitoringServer.UpdateExternalMetrics(c, map[cmprovider.ExternalMetricInfo]struct{}{})
 		}
 	}
 
