@@ -75,38 +75,9 @@ func (mc *MetricsClient) discoverMetrics() error {
 	}
 	metricRecorder := newRecorder(namer)
 
-	// We first record static fields, they do not require to read the mapping
-	for _, metricSet := range mc.metricServerCfg.MetricSets {
-		for _, field := range metricSet.Fields {
-			if len(field.Name) > 0 {
-				search := field.Search
-				search.Template = template.Must(template.New("").Parse(search.Body))
-				metricResultQuery, err := gojq.Parse(search.MetricPath)
-				if err != nil {
-					return fmt.Errorf("error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
-				}
-				search.MetricResultQuery = metricResultQuery
-				timestampResultQuery, err := gojq.Parse(search.TimestampPath)
-				if err != nil {
-					return fmt.Errorf("error while parsing timestampResultQuery for field %s: error: %v", field.Name, err)
-
-				}
-				search.TimestampResultQuery = timestampResultQuery
-				// This is a static field, save the request body and the metric path
-				metricRecorder.indexedMetrics[field.Name] = MetricMetadata{
-					Search:  &search,
-					Indices: metricSet.Indices,
-				}
-				metricRecorder.metrics[field.Name] = provider.CustomMetricInfo{
-					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
-						Group:    "",
-						Resource: "pods",
-					},
-					Namespaced: true,
-					Metric:     field.Name,
-				}
-			}
-		}
+	// We first record static fields, they do not require to read the mapping.
+	if err := recordStaticFields(mc.metricServerCfg, metricRecorder); err != nil {
+		return err
 	}
 
 	for _, metricSet := range mc.metricServerCfg.MetricSets {
@@ -181,6 +152,48 @@ type recorder struct {
 	metrics        map[string]provider.CustomMetricInfo
 	indexedMetrics map[string]MetricMetadata
 	namer          config.Namer
+}
+
+// recordStaticFields registers the config-defined static (search-based) metrics
+// into the recorder. These fields carry an explicit Search body and are computed
+// via a query, so unlike numeric mapping fields they require no _mapping or
+// _field_caps lookup to be served. It is shared by periodic discovery and, in
+// hpa discovery mode, by client construction (where discoverMetrics never runs),
+// so that an HPA referencing a static field can still resolve it.
+func recordStaticFields(cfg config.MetricServer, rec *recorder) error {
+	for _, metricSet := range cfg.MetricSets {
+		for _, field := range metricSet.Fields {
+			if len(field.Name) == 0 {
+				continue
+			}
+			search := field.Search
+			search.Template = template.Must(template.New("").Parse(search.Body))
+			metricResultQuery, err := gojq.Parse(search.MetricPath)
+			if err != nil {
+				return fmt.Errorf("error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
+			}
+			search.MetricResultQuery = metricResultQuery
+			timestampResultQuery, err := gojq.Parse(search.TimestampPath)
+			if err != nil {
+				return fmt.Errorf("error while parsing timestampResultQuery for field %s: error: %v", field.Name, err)
+			}
+			search.TimestampResultQuery = timestampResultQuery
+			// This is a static field, save the request body and the metric path.
+			rec.indexedMetrics[field.Name] = MetricMetadata{
+				Search:  &search,
+				Indices: metricSet.Indices,
+			}
+			rec.metrics[field.Name] = provider.CustomMetricInfo{
+				GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
+					Group:    "",
+					Resource: "pods",
+				},
+				Namespaced: true,
+				Metric:     field.Name,
+			}
+		}
+	}
+	return nil
 }
 
 // ResolveCustomMetric checks whether the given metric is exposed by any configured
