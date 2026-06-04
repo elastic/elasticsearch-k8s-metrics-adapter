@@ -23,6 +23,7 @@ package hpa
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -52,9 +53,18 @@ type Watcher struct {
 	tracker  *referenceTracker
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
-	// resyncPeriod is how often the informer does a full relist; it also drives
-	// periodic re-Advertise so transiently-failed resolutions get retried.
+	// resyncPeriod is how often the informer does a full relist; it also re-delivers
+	// every HPA, which drives the retry of any transiently-failed resolutions (see
+	// retryUnresolved).
 	resyncPeriod time.Duration
+
+	// mu guards unresolved.
+	mu sync.Mutex
+	// unresolved holds the names of metrics that are referenced by at least one
+	// HPA but whose Advertise call failed transiently. They are retried on every
+	// subsequent HPA event (including the periodic resync). In steady state this
+	// set is empty.
+	unresolved map[string]struct{}
 }
 
 // NewWatcher builds a Watcher over the given clientset.
@@ -68,6 +78,7 @@ func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncP
 		factory:      factory,
 		informer:     informer,
 		resyncPeriod: resyncPeriod,
+		unresolved:   make(map[string]struct{}),
 	}
 	_, _ = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    w.onUpsert,
@@ -105,6 +116,11 @@ func (w *Watcher) onUpsert(obj interface{}) {
 	added, removed := w.tracker.upsert(key, names)
 	w.advertise(added)
 	w.withdraw(removed)
+	// The tracker reports each name as "added" only once, so a transient
+	// Advertise failure above would otherwise never be retried. Re-attempt any
+	// still-unresolved names now; HPA status updates and the informer's periodic
+	// resync re-deliver the object, so this provides the retry tick.
+	w.retryUnresolved()
 }
 
 func (w *Watcher) onDelete(obj interface{}) {
@@ -126,26 +142,66 @@ func (w *Watcher) onDelete(obj interface{}) {
 
 func (w *Watcher) advertise(names []string) {
 	for _, name := range names {
-		// Best-effort, bounded resolution per metric. A transient failure here
-		// is retried on the next informer resync.
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		found, err := w.registry.Advertise(ctx, name)
-		cancel()
-		switch {
-		case err != nil:
-			w.logger.Error(err, "Failed to advertise metric referenced by an HPA", "metric", name)
-		case !found:
-			w.logger.Info("HPA references a metric not served by any client", "metric", name)
-		default:
-			w.logger.Info("Advertised metric referenced by an HPA", "metric", name)
-		}
+		w.advertiseOne(name)
+	}
+}
+
+// advertiseOne resolves and advertises a single metric. On a transient failure
+// it records the name in the unresolved set so it is retried on a later HPA
+// event; on success or a definitive "not served" answer it clears the name.
+func (w *Watcher) advertiseOne(name string) {
+	// Best-effort, bounded resolution per metric.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	found, err := w.registry.Advertise(ctx, name)
+	cancel()
+	switch {
+	case err != nil:
+		w.logger.Error(err, "Failed to advertise metric referenced by an HPA; will retry", "metric", name)
+		w.setUnresolved(name, true)
+	case !found:
+		w.logger.Info("HPA references a metric not served by any client", "metric", name)
+		w.setUnresolved(name, false)
+	default:
+		w.logger.Info("Advertised metric referenced by an HPA", "metric", name)
+		w.setUnresolved(name, false)
 	}
 }
 
 func (w *Watcher) withdraw(names []string) {
 	for _, name := range names {
 		w.registry.Withdraw(name)
+		w.setUnresolved(name, false)
 		w.logger.Info("Withdrew metric no longer referenced by any HPA", "metric", name)
+	}
+}
+
+// setUnresolved adds (unresolved=true) or removes (unresolved=false) a metric
+// name from the retry set.
+func (w *Watcher) setUnresolved(name string, unresolved bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if unresolved {
+		w.unresolved[name] = struct{}{}
+	} else {
+		delete(w.unresolved, name)
+	}
+}
+
+// retryUnresolved re-attempts to advertise every metric currently in the retry
+// set. It is a no-op in steady state, when the set is empty.
+func (w *Watcher) retryUnresolved() {
+	w.mu.Lock()
+	if len(w.unresolved) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	names := make([]string, 0, len(w.unresolved))
+	for name := range w.unresolved {
+		names = append(names, name)
+	}
+	w.mu.Unlock()
+	for _, name := range names {
+		w.advertiseOne(name)
 	}
 }
 

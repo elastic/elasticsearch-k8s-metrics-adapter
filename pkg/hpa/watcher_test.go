@@ -19,6 +19,7 @@ package hpa
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -34,13 +35,18 @@ import (
 // fakeRegistry records advertise/withdraw calls.
 type fakeRegistry struct {
 	mu         sync.Mutex
-	advertised map[string]int
+	advertised map[string]int // successful advertises, keyed by metric name
+	attempts   map[string]int // total advertise attempts, keyed by metric name
 	withdrawn  map[string]int
+	// failTimes is the number of initial advertise attempts that return a
+	// transient error before succeeding.
+	failTimes int
 }
 
 func newFakeRegistry() *fakeRegistry {
 	return &fakeRegistry{
 		advertised: make(map[string]int),
+		attempts:   make(map[string]int),
 		withdrawn:  make(map[string]int),
 	}
 }
@@ -48,6 +54,11 @@ func newFakeRegistry() *fakeRegistry {
 func (f *fakeRegistry) Advertise(_ context.Context, metricName string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.attempts[metricName]++
+	if f.failTimes > 0 {
+		f.failTimes--
+		return false, errors.New("transient resolve failure")
+	}
 	f.advertised[metricName]++
 	return true, nil
 }
@@ -68,6 +79,12 @@ func (f *fakeRegistry) withdrawCount(name string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.withdrawn[name]
+}
+
+func (f *fakeRegistry) attemptCount(name string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.attempts[name]
 }
 
 func newHPA(namespace, name string, metrics ...string) *autoscalingv2.HorizontalPodAutoscaler {
@@ -113,6 +130,32 @@ func TestWatcher_AdvertisesOnHPACreate(t *testing.T) {
 
 	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers("ns1").
 		Create(ctx, newHPA("ns1", "hpa1", "foo"), metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	eventually(t, func() bool { return reg.advertiseCount("foo") == 1 })
+}
+
+func TestWatcher_RetriesTransientAdvertiseFailure(t *testing.T) {
+	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
+	reg := newFakeRegistry()
+	// Fail the first two attempts: the initial advertise on cache sync and the
+	// immediate same-event retry, so the metric stays unresolved across events.
+	reg.failTimes = 2
+	w := NewWatcher(clientset, reg, 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	// Both initial attempts failed: the metric is not advertised yet.
+	eventually(t, func() bool { return reg.attemptCount("foo") >= 2 })
+	assert.Equal(t, 0, reg.advertiseCount("foo"))
+
+	// A subsequent HPA event (here an update) must drive the retry to success.
+	hpa := newHPA("ns1", "hpa1", "foo")
+	hpa.Annotations = map[string]string{"bump": "1"}
+	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers("ns1").
+		Update(ctx, hpa, metav1.UpdateOptions{})
 	require.NoError(t, err)
 
 	eventually(t, func() bool { return reg.advertiseCount("foo") == 1 })
