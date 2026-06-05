@@ -38,15 +38,14 @@ import (
 )
 
 // numericTypes is the single source of truth for the Elasticsearch numeric
-// field types the adapter is willing to expose. It is used directly as the
-// `types=` filter for the _field_caps API, and allowedTypes is derived from it
-// for membership checks.
+// field types the adapter is willing to expose. It is used as the `types=`
+// filter on _field_caps requests so non-numeric fields are excluded server-side.
 var numericTypes = []string{
 	"byte", "double", "float", "half_float",
 	"integer", "long", "scaled_float", "short", "unsigned_long",
 }
 
-var allowedTypes = func() map[string]struct{} {
+var numericTypesSet = func() map[string]struct{} {
 	m := make(map[string]struct{}, len(numericTypes))
 	for _, t := range numericTypes {
 		m[t] = struct{}{}
@@ -55,7 +54,7 @@ var allowedTypes = func() map[string]struct{} {
 }()
 
 func isTypeAllowed(t string) bool {
-	_, ok := allowedTypes[t]
+	_, ok := numericTypesSet[t]
 	return ok
 }
 
@@ -80,7 +79,7 @@ func (mc *MetricsClient) discoverMetrics() error {
 	}
 
 	for _, metricSet := range mc.metricServerCfg.MetricSets {
-		if err := getMappingFor(mc.logger, metricSet, mc.Client, metricRecorder); err != nil {
+		if err := discoverFieldCaps(mc.logger, metricSet, mc.Client, metricRecorder); err != nil {
 			return err
 		}
 	}
@@ -93,50 +92,82 @@ func (mc *MetricsClient) discoverMetrics() error {
 	return nil
 }
 
-func getMappingFor(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder) error {
-	req := esapi.IndicesGetMappingRequest{Index: metricSet.Indices}
+// discoverFieldCaps calls _field_caps for all numeric field types in the
+// configured index pattern and registers every matching field with the recorder.
+//
+// It replaces the former getMappingFor / _processMappingDocument approach which
+// fetched the full nested _mapping response (~43 MB for metrics-*) and walked
+// it recursively. _field_caps returns a flat structure, is filtered server-side
+// to numeric types, and is ~5x smaller on the wire. filter_path=fields further
+// strips the (large) list of matched index names from the response.
+func discoverFieldCaps(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder) error {
+	req := esapi.FieldCapsRequest{
+		Index:             metricSet.Indices,
+		Fields:            []string{"*"},
+		Types:             numericTypes,
+		AllowNoIndices:    ptr.To(true),
+		IgnoreUnavailable: ptr.To(true),
+		FilterPath:        []string{"fields"},
+	}
 	res, err := req.Do(context.Background(), esClient)
 	if err != nil {
-		return fmt.Errorf("discovery error, got response: %s", err)
+		return fmt.Errorf("_field_caps discovery error: %w", err)
 	}
 	defer res.Body.Close()
 	if res.IsError() {
-		return fmt.Errorf("[%s] Error getting index mapping %v", res.Status(), metricSet.Indices)
-	} else {
-		// Deserialize the response into a map.
-		var r map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-			return fmt.Errorf("error parsing the response body: %s", err)
-		} else {
-			if len(r) == 0 {
-				logger.Info("Mapping is empty", "index_pattern", strings.Join(metricSet.Indices, ","))
-				return nil
+		return fmt.Errorf("[%s] _field_caps error for %v", res.Status(), metricSet.Indices)
+	}
+
+	var r struct {
+		Fields map[string]map[string]struct {
+			Type string `json:"type"`
+		} `json:"fields"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return fmt.Errorf("error parsing _field_caps response: %w", err)
+	}
+	if len(r.Fields) == 0 {
+		logger.Info("No numeric fields found", "index_pattern", strings.Join(metricSet.Indices, ","))
+		return nil
+	}
+
+	logger.V(1).Info("Discovered fields via _field_caps",
+		"count", len(r.Fields),
+		"index_pattern", strings.Join(metricSet.Indices, ","))
+
+	for fieldName, typesMap := range r.Fields {
+		// Pick the first numeric type mapping for this field.
+		var fieldType string
+		for t := range typesMap {
+			if isTypeAllowed(t) {
+				fieldType = t
+				break
 			}
-			// Process mapping
-			for _, indexMapping := range r {
-				m := indexMapping.(map[string]interface{})
-				mapping, hasMapping := m["mappings"]
-				if !hasMapping {
-					return fmt.Errorf("discovery error: no 'mapping' field in %s", metricSet.Indices)
-				}
-				recorder.processMappingDocument(mapping, metricSet.Fields, metricSet.Indices)
-			}
+		}
+		if fieldType == "" {
+			continue
+		}
+
+		fields := metricSet.Fields.FindMetadata(fieldName)
+		if fields == nil {
+			// Field does not match any configured pattern; skip it.
+			continue
+		}
+
+		recorder.metrics[fieldName] = provider.CustomMetricInfo{
+			GroupResource: schema.GroupResource{
+				Group:    "",
+				Resource: "pods",
+			},
+			Namespaced: true,
+			Metric:     recorder.namer.Register(fieldName),
+		}
+		recorder.indexedMetrics[fieldName] = MetricMetadata{
+			Fields:  *fields,
+			Indices: metricSet.Indices,
 		}
 	}
 	return nil
-}
-
-func (r *recorder) processMappingDocument(mapping interface{}, fields config.FieldsSet, indices []string) {
-	tm, ok := mapping.(map[string]interface{})
-	if !ok {
-		return
-	}
-	rp := tm["properties"]
-	rpm, ok := rp.(map[string]interface{})
-	if !ok {
-		return
-	}
-	r._processMappingDocument("", rpm, fields, indices)
 }
 
 func newRecorder(namer config.Namer) *recorder {
@@ -299,62 +330,3 @@ func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []
 	return false, nil
 }
 
-func (r *recorder) _processMappingDocument(root string, d map[string]interface{}, fieldsSet config.FieldsSet, indices []string) {
-	for k, t := range d {
-		if k == "*" {
-			continue
-		}
-		if k == "properties" {
-			tm, ok := t.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			r._processMappingDocument(root, tm, fieldsSet, indices)
-		} else {
-			// Is there a properties child ?
-			child, ok := t.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if _, hasProperties := child["properties"]; hasProperties {
-				var newRoot string
-				if root == "" {
-					newRoot = k
-				} else {
-					newRoot = fmt.Sprintf("%s.%s", root, k)
-				}
-				r._processMappingDocument(newRoot, child, fieldsSet, indices)
-			} else {
-				// Ensure that we have a type
-				if t, hasType := child["type"]; !(hasType && isTypeAllowed(t.(string))) {
-					continue
-				}
-				metricName := ""
-				// New metric
-				if root == "" {
-					metricName = k
-				} else {
-					metricName = fmt.Sprintf("%s.%s", root, k)
-				}
-
-				fields := fieldsSet.FindMetadata(metricName)
-				if fields == nil {
-					// field does not match a pattern, do not register it as available
-					continue
-				}
-				r.metrics[metricName] = provider.CustomMetricInfo{
-					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
-						Group:    "",
-						Resource: "pods",
-					},
-					Namespaced: true,
-					Metric:     r.namer.Register(metricName),
-				}
-				r.indexedMetrics[metricName] = MetricMetadata{
-					Fields:  *fields,
-					Indices: indices,
-				}
-			}
-		}
-	}
-}
