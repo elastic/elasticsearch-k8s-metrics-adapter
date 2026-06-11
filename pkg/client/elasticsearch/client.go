@@ -139,6 +139,17 @@ func NewElasticsearchClient(
 	if err != nil {
 		return nil, err
 	}
+	namer, err := config.NewNamer(metricServerCfg.Rename)
+	if err != nil {
+		return nil, fmt.Errorf("%s: failed to create namer: %v", metricServerCfg.Name, err)
+	}
+	// Pre-register static (search-based) fields so they are served immediately,
+	// including in hpa discovery mode where discoverMetrics — which would
+	// otherwise record them — never runs for Elasticsearch clients.
+	rec := newRecorder(namer)
+	if err := recordStaticFields(metricServerCfg, rec); err != nil {
+		return nil, err
+	}
 	return &MetricsClient{
 		logger:          logger,
 		Client:          esClient,
@@ -146,6 +157,9 @@ func NewElasticsearchClient(
 		client:          client,
 		mapper:          mapper,
 		tracer:          tracer,
+		metrics:         rec.metrics,
+		indexedMetrics:  rec.indexedMetrics,
+		namer:           namer,
 	}, nil
 }
 

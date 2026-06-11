@@ -51,6 +51,31 @@ steps:
 
   - wait
 
+  - label: ":go: :kubernetes: Run e2e tests (hpa discovery mode)"
+    command: |
+      trap 'make e2e-down || true' EXIT
+      # Go is preinstalled at /usr/local/go on the tooling image; just put it on PATH.
+      export PATH=$PATH:/usr/local/go/bin
+      # Install kubectl
+      curl -sSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -sSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+      chmod +x /usr/local/bin/kubectl
+      # Install kind
+      curl -sSLo /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
+      chmod +x /usr/local/bin/kind
+      # Install helm
+      curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      make e2e-up
+      make e2e
+    artifact_paths:
+      - "e2e-*.log"
+    agents:
+      provider: gcp
+      image: family/tooling-ubuntu-2204
+      imageProject: elastic-images-prod
+      machineType: n1-highcpu-16
+
+  - wait
+
   - label: ":serverless::argo: Run synthetics tests and update elasticsearch-k8s-metrics-adapter to ${VERSION} in serverless-gitops"
     branches: main
     trigger: gpctl-promote-after-serverless-devenv-synthetics

@@ -28,3 +28,14 @@ rules:
     verbs:
       - get
       - list
+  # Required by the HPA-driven discovery mode (--discovery-mode=hpa): the
+  # adapter watches HorizontalPodAutoscaler objects to learn which custom
+  # metrics it needs to serve.
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
