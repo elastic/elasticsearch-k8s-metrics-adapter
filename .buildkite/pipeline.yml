@@ -54,9 +54,7 @@ steps:
   - label: ":go: :kubernetes: Run e2e tests (hpa discovery mode)"
     command: |
       trap 'make e2e-down || true' EXIT
-      # Install Go
-      curl -sSLo /tmp/go.tar.gz "https://go.dev/dl/go1.26.2.linux-amd64.tar.gz"
-      tar -C /usr/local -xzf /tmp/go.tar.gz >/dev/null
+      # Go is preinstalled at /usr/local/go on the tooling image; just put it on PATH.
       export PATH=$PATH:/usr/local/go/bin
       # Install kubectl
       curl -sSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -sSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
