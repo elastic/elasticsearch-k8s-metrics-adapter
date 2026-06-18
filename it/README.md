@@ -59,17 +59,15 @@ is exercised deterministically.
 
 | Test | Scenario |
 |---|---|
-| `TestAdapterReadyAndAggregated` | adapter Ready + aggregated API serving (10) |
-| `TestAdvertiseExistingHPAOnStartup` | pre-existing HPA's metric advertised + value fetchable (1) |
-| `TestAdvertiseOnHPACreate` | HPA created at runtime → metric advertised (2) |
-| `TestWithdrawOnLastHPADelete` | shared metric withdrawn only when the last HPA is deleted (4) |
-| `TestUnadvertisedMetricNotFound` | unreferenced metric is unadvertised and 404s (5) |
-| `TestNoMappingCalls` | discovery uses `_field_caps`, never `_mapping` (3) |
-| `TestValueQueryShape` | value fetch filters by field + namespace + pod (9) |
-| `TestStaticSearchFieldServed` | static search field served without `_field_caps` — Issue B (7) |
-| `TestTransientFailureIsRetried` | transiently-failed resolve is retried — Issue A (8) |
-
-See [plan.md](plan.md) for the rationale behind each.
+| `TestAdapterReadyAndAggregated` | adapter Ready + aggregated API serving |
+| `TestAdvertiseExistingHPAOnStartup` | pre-existing HPA's metric advertised + value fetchable |
+| `TestAdvertiseOnHPACreate` | HPA created at runtime → metric advertised |
+| `TestWithdrawOnLastHPADelete` | shared metric withdrawn only when the last HPA is deleted |
+| `TestUnadvertisedMetricNotFound` | unreferenced metric is unadvertised and 404s |
+| `TestNoMappingCalls` | discovery uses `_field_caps`, never `_mapping` |
+| `TestValueQueryShape` | value fetch filters by field + namespace + pod |
+| `TestStaticSearchFieldServed` | static search field served without `_field_caps` |
+| `TestTransientFailureIsRetried` | transiently-failed resolve is retried |
 
 ## Notes
 

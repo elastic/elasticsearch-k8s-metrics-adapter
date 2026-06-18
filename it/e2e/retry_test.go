@@ -27,9 +27,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Scenario 8 (Issue A): a metric whose first resolution fails transiently is not
-// dropped — it stays in the watcher's unresolved set and is retried on a later
-// HPA event, eventually getting advertised.
+// A metric whose first resolution fails transiently is not dropped — it stays
+// in the watcher's unresolved set and is retried on a later HPA event,
+// eventually getting advertised.
 func TestTransientFailureIsRetried(t *testing.T) {
 	ctx := context.Background()
 	const metric = "prometheus.test_retry.value"

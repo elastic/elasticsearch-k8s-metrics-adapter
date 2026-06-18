@@ -29,7 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Scenario 10: the adapter comes up Ready and its aggregated API is available.
+// The adapter comes up Ready and its aggregated API is available.
 // (TestMain already gates on this; this test asserts it explicitly and proves
 // discovery returns a 200, not a 503.)
 func TestAdapterReadyAndAggregated(t *testing.T) {
@@ -39,10 +39,10 @@ func TestAdapterReadyAndAggregated(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code, "custom.metrics.k8s.io/v1beta2 discovery should be served")
 }
 
-// Scenario 1: a metric referenced by an HPA that existed BEFORE the adapter
-// started must be advertised after the watcher's initial cache sync, and its
-// value must be fetchable. The HPA is applied by `make e2e-up`
-// (it/testdata/hpa-startup.yaml) ahead of the adapter.
+// A metric referenced by an HPA that existed BEFORE the adapter started must
+// be advertised after the watcher's initial cache sync, and its value must be
+// fetchable. The HPA is applied by `make e2e-up` (it/testdata/hpa-startup.yaml)
+// ahead of the adapter.
 func TestAdvertiseExistingHPAOnStartup(t *testing.T) {
 	ctx := context.Background()
 
@@ -57,8 +57,8 @@ func TestAdvertiseExistingHPAOnStartup(t *testing.T) {
 	assert.NotEmpty(t, values.Items[0].Value, "metric value should be populated")
 }
 
-// Scenario 2: a metric referenced by an HPA created while the adapter is
-// running becomes advertised shortly after.
+// A metric referenced by an HPA created while the adapter is running becomes
+// advertised shortly after.
 func TestAdvertiseOnHPACreate(t *testing.T) {
 	ctx := context.Background()
 	const metric = "prometheus.test_advertise_on_create.value"
@@ -75,8 +75,8 @@ func TestAdvertiseOnHPACreate(t *testing.T) {
 	})
 }
 
-// Scenario 4: a metric shared by two HPAs is withdrawn only when the LAST
-// referencing HPA is deleted.
+// A metric shared by two HPAs is withdrawn only when the LAST referencing HPA
+// is deleted.
 func TestWithdrawOnLastHPADelete(t *testing.T) {
 	ctx := context.Background()
 	const metric = "prometheus.test_withdraw.value"
@@ -95,8 +95,8 @@ func TestWithdrawOnLastHPADelete(t *testing.T) {
 	eventually(t, 30*time.Second, func() bool { return !isAdvertised(ctx, t, metric) })
 }
 
-// Scenario 5: a metric no HPA references is not advertised, and querying its
-// value returns 404 from the adapter.
+// A metric no HPA references is not advertised, and querying its value returns
+// 404 from the adapter.
 func TestUnadvertisedMetricNotFound(t *testing.T) {
 	ctx := context.Background()
 	const metric = "prometheus.never_referenced.value"

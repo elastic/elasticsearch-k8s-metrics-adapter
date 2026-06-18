@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Scenario 3: discovery in hpa mode uses _field_caps and never _mapping.
+// Discovery in hpa mode uses _field_caps and never _mapping.
 // Proven from the mock's request log.
 func TestNoMappingCalls(t *testing.T) {
 	ctx := context.Background()
@@ -52,8 +52,8 @@ func TestNoMappingCalls(t *testing.T) {
 	assert.True(t, sawFieldCaps, "expected at least one _field_caps call during resolution")
 }
 
-// Scenario 9: fetching a value issues a _search filtered by the field's
-// existence and the target pod's namespace and name.
+// Fetching a value issues a _search filtered by the field's existence and the
+// target pod's namespace and name.
 func TestValueQueryShape(t *testing.T) {
 	ctx := context.Background()
 

@@ -33,10 +33,10 @@ import (
 // staticMetric is the search-based field configured in it/testdata/values-e2e.yaml.
 const staticMetric = "prometheus.static_test.value"
 
-// Scenario 7 (Issue B): a static, search-based field is advertised and served in
-// hpa mode. Such a field is pre-registered at client construction
-// (recordStaticFields), so it must resolve via the fast path — never a
-// _field_caps probe — and its value comes from its configured _search body.
+// A static, search-based field is advertised and served in hpa mode. Such a
+// field is pre-registered at client construction (recordStaticFields), so it
+// must resolve via the fast path — never a _field_caps probe — and its value
+// comes from its configured _search body.
 func TestStaticSearchFieldServed(t *testing.T) {
 	ctx := context.Background()
 
