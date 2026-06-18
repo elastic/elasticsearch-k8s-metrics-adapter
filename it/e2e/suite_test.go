@@ -34,6 +34,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -354,17 +356,9 @@ func consistently(t *testing.T, d time.Duration, cond func() bool) {
 	}
 }
 
-// eventually polls cond until it returns true or the timeout elapses.
 func eventually(t *testing.T, timeout time.Duration, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	t.Fatalf("condition not met within %s", timeout)
+	assert.Eventually(t, cond, timeout, 500*time.Millisecond)
 }
 
 func pollUntil(ctx context.Context, interval time.Duration, cond func() (bool, error)) error {
