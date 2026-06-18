@@ -329,3 +329,19 @@ stateDiagram-v2
 In `hpa` mode, **only Elasticsearch clients** take the resolver path; other
 client types (e.g. custom-api) keep going through the periodic scheduler because
 their list endpoints are cheap.
+
+## Known limitations
+
+### `rename` is not supported in `hpa` mode
+
+The `rename` config directive (`matches` / `as`) lets you expose ES fields under
+a different name to Kubernetes. It works in `periodic` mode because
+`discoverMetrics()` walks every field and calls `namer.Register(realFieldName)`
+for each one, building the alias → real-name map before any HPA query arrives.
+
+In `hpa` mode `discoverMetrics()` never runs, so the map is never populated.
+When `ResolveCustomMetric` receives the alias from the HPA it probes `_field_caps`
+with the alias name — which doesn't exist in Elasticsearch — and silently returns
+not-found. The metric is never advertised.
+
+If you rely on `rename`, use `--discovery-mode=periodic` for now.
