@@ -75,11 +75,11 @@ func TestMetricNames(t *testing.T) {
 		{"nil", nil, nil},
 		{"empty", hpaWith(), nil},
 		{"pods", hpaWith(podsMetric("foo")), []string{"foo"}},
-		{"object", hpaWith(objectMetric("bar")), []string{"bar"}},
-		{"pods and object", hpaWith(podsMetric("foo"), objectMetric("bar")), []string{"foo", "bar"}},
+		{"object ignored", hpaWith(objectMetric("bar")), nil},
+		{"pods kept, object ignored", hpaWith(podsMetric("foo"), objectMetric("bar")), []string{"foo"}},
 		{"resource ignored", hpaWith(resourceMetric()), nil},
 		{"external ignored", hpaWith(externalMetric("ext")), nil},
-		{"mixed", hpaWith(podsMetric("foo"), resourceMetric(), externalMetric("ext"), objectMetric("bar")), []string{"foo", "bar"}},
+		{"mixed", hpaWith(podsMetric("foo"), resourceMetric(), externalMetric("ext"), objectMetric("bar")), []string{"foo"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

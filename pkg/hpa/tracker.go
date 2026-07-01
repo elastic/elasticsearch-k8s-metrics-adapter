@@ -23,26 +23,27 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 )
 
-// metricNames extracts the custom-metric names referenced by an HPA. Only
-// metric types served through the custom metrics API are considered: Pods and
-// Object. Resource / ContainerResource (cpu, memory) are served by the built-in
-// metrics API and External metrics go through a different path, so both are
-// ignored here.
+// metricNames extracts the custom-metric names referenced by an HPA. Only Pods
+// metrics are considered: they are served through the custom metrics API and
+// the ES client advertises every resolved metric under the "pods" resource.
+//
+// Object metrics are intentionally ignored. They are also served through the
+// custom metrics API, but the ES client hardcodes Resource: "pods" (see the
+// "TODO: infer resource" in pkg/client/elasticsearch/discovery.go), so an
+// Object metric on a non-pod resource would be advertised as pods/<name> and
+// never match the request's resource. Until the resource can be inferred,
+// surfacing Object names would advertise them incorrectly rather than serve
+// them, so we skip them. Resource / ContainerResource (cpu, memory) are served
+// by the built-in metrics API and External metrics go through a different path,
+// so both are ignored too.
 func metricNames(hpa *autoscalingv2.HorizontalPodAutoscaler) []string {
 	if hpa == nil {
 		return nil
 	}
 	var names []string
 	for _, m := range hpa.Spec.Metrics {
-		switch m.Type {
-		case autoscalingv2.PodsMetricSourceType:
-			if m.Pods != nil {
-				names = append(names, m.Pods.Metric.Name)
-			}
-		case autoscalingv2.ObjectMetricSourceType:
-			if m.Object != nil {
-				names = append(names, m.Object.Metric.Name)
-			}
+		if m.Type == autoscalingv2.PodsMetricSourceType && m.Pods != nil {
+			names = append(names, m.Pods.Metric.Name)
 		}
 	}
 	return names
