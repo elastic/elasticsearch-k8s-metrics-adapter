@@ -23,6 +23,7 @@ package hpa
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -95,7 +96,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 	w.logger.Info("Starting HPA watcher")
 	w.factory.Start(ctx.Done())
 	if !cache.WaitForCacheSync(ctx.Done(), w.informer.HasSynced) {
-		return context.Canceled
+		return fmt.Errorf("HPA watcher: informer cache failed to sync")
 	}
 	w.logger.Info("HPA watcher cache synced")
 	return nil
