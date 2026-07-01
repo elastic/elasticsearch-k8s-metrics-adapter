@@ -18,6 +18,8 @@
 package client
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
@@ -31,6 +33,11 @@ type Interface interface {
 	GetConfiguration() config.MetricServer
 
 	ListCustomMetricInfos() (map[provider.CustomMetricInfo]struct{}, error)
+	// ResolveCustomMetric checks whether the named custom metric is served by this client and,
+	// if so, registers any internal metadata needed to serve subsequent value queries.
+	// Returns (info, true, nil) when found, (zero, false, nil) when definitively not served,
+	// and (zero, false, err) on a transient failure (caller must not cache a negative result).
+	ResolveCustomMetric(ctx context.Context, metricName string) (provider.CustomMetricInfo, bool, error)
 	GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, selector labels.Selector) (*custom_metrics.MetricValue, error)
 	GetMetricBySelector(namespace string, selector labels.Selector, info provider.CustomMetricInfo, metricSelector labels.Selector) (*custom_metrics.MetricValueList, error)
 
