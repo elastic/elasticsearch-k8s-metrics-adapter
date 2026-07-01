@@ -332,6 +332,50 @@ their list endpoints are cheap.
 
 ## Known limitations
 
+`hpa` mode is a deliberate trade-off against `periodic`. `periodic` remains the
+default; switch to `hpa` only if the points below are acceptable for your
+deployment.
+
+### The discovery catalogue lists only demanded metrics
+
+In `hpa` mode `ListAllCustomMetrics` (`GET /apis/custom.metrics.k8s.io/v1beta1/`,
+`kubectl get --raw`, dashboards) lists **only** the metrics currently referenced
+by a live HPA, and the set changes as HPAs come and go. Autoscaling itself is
+unaffected — an HPA names the metric it needs — but you can no longer enumerate
+every metric available to scale on. This is an accepted, deliberate loss of
+enumeration. Use `periodic` if you rely on that enumeration.
+
+### Cold-start window for newly-referenced metrics
+
+A metric referenced by an HPA created *after* startup returns `404`
+("unable to fetch metrics") until the watcher resolves and advertises it. HPAs
+already present at startup are unaffected: `Watcher.Start` blocks on the initial
+informer cache sync, so every already-referenced metric is advertised before the
+API server begins serving.
+
+### `metricSets` is still required and still scopes resolution
+
+`metricSets` is not optional in `hpa` mode. Validation rejects an Elasticsearch
+server with no `metricSets` in every mode, and the configured `metricSets` still
+supply both the `_field_caps` target indices and the field-pattern allow-list
+used to accept or reject a referenced metric name.
+
+### Object-type metrics are not served
+
+HPA `Object` metrics are ignored by the watcher. The ES client advertises every
+resolved metric under the `pods` resource, so an `Object` metric on a non-pod
+resource would be advertised as `pods/<name>` and never match. Rather than
+advertise metrics it cannot serve correctly, `hpa` mode skips them until the
+resource can be inferred from configuration. Use `Pods` metrics.
+
+### The client-side metric cache only grows
+
+`Withdraw` removes a metric from the registry but not from the ES client's
+internal `metrics`/`indexedMetrics` cache. A re-referenced metric is then served
+from that cached positive without re-validating against Elasticsearch. The cache
+is bounded by the small set of distinct HPA-referenced names, so this is not a
+growth concern.
+
 ### `rename` is not supported in `hpa` mode
 
 The `rename` config directive (`matches` / `as`) lets you expose ES fields under
