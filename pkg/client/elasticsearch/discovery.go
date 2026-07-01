@@ -58,6 +58,66 @@ func isTypeAllowed(t string) bool {
 	return ok
 }
 
+// fieldTypes is the per-field slice of a _field_caps response: a map from ES
+// type name to that type's capabilities. Only the type name matters to us, so
+// the value struct carries just "type".
+type fieldTypes = map[string]struct {
+	Type string `json:"type"`
+}
+
+// fieldCaps maps a field name to its fieldTypes. It is the shape decoded from
+// the "fields" object of a _field_caps response.
+type fieldCaps = map[string]fieldTypes
+
+// fetchNumericFieldCaps runs a _field_caps request for the given fields against
+// the index pattern and returns the decoded "fields" map. It is shared by
+// discoverFieldCaps (fields=["*"]) and fieldExistsAsNumeric (a single field).
+//
+// The request is filtered server-side to numeric types (Types), tolerates
+// missing or empty index patterns (AllowNoIndices/IgnoreUnavailable), and uses
+// filter_path=fields to drop the top-level "indices" array from the response.
+// For an index pattern like metrics-* that matches thousands of data-stream
+// backing indices, that array dominates the payload even though we only care
+// about field types.
+func fetchNumericFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields []string) (fieldCaps, error) {
+	req := esapi.FieldCapsRequest{
+		Index:             indices,
+		Fields:            fields,
+		Types:             numericTypes,
+		AllowNoIndices:    ptr.To(true),
+		IgnoreUnavailable: ptr.To(true),
+		FilterPath:        []string{"fields"},
+	}
+	res, err := req.Do(ctx, esClient)
+	if err != nil {
+		return nil, fmt.Errorf("_field_caps request failed: %w", err)
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		return nil, fmt.Errorf("[%s] _field_caps error for %v", res.Status(), indices)
+	}
+	var r struct {
+		Fields fieldCaps `json:"fields"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return nil, fmt.Errorf("error parsing _field_caps response: %w", err)
+	}
+	return r.Fields, nil
+}
+
+// hasNumericType reports whether the given per-field type set contains at least
+// one type the adapter is willing to expose. _field_caps is already filtered
+// server-side via Types, but we re-check client-side so correctness does not
+// depend on that filter being honored.
+func hasNumericType(types fieldTypes) bool {
+	for t := range types {
+		if isTypeAllowed(t) {
+			return true
+		}
+	}
+	return false
+}
+
 type MetricMetadata struct {
 	Fields          config.Fields
 	Search          *config.Search
@@ -98,58 +158,28 @@ func (mc *MetricsClient) discoverMetrics() error {
 // It replaces the former getMappingFor / _processMappingDocument approach which
 // fetched the full nested _mapping response (~43 MB for metrics-*) and walked
 // it recursively. _field_caps returns a flat structure, is filtered server-side
-// to numeric types, and is ~5x smaller on the wire. filter_path=fields further
-// strips the (large) list of matched index names from the response.
+// to numeric types, and is ~5x smaller on the wire (see fetchNumericFieldCaps).
 func discoverFieldCaps(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder) error {
-	req := esapi.FieldCapsRequest{
-		Index:             metricSet.Indices,
-		Fields:            []string{"*"},
-		Types:             numericTypes,
-		AllowNoIndices:    ptr.To(true),
-		IgnoreUnavailable: ptr.To(true),
-		FilterPath:        []string{"fields"},
-	}
-	res, err := req.Do(context.Background(), esClient)
+	fields, err := fetchNumericFieldCaps(context.Background(), esClient, metricSet.Indices, []string{"*"})
 	if err != nil {
-		return fmt.Errorf("_field_caps discovery error: %w", err)
+		return err
 	}
-	defer res.Body.Close()
-	if res.IsError() {
-		return fmt.Errorf("[%s] _field_caps error for %v", res.Status(), metricSet.Indices)
-	}
-
-	var r struct {
-		Fields map[string]map[string]struct {
-			Type string `json:"type"`
-		} `json:"fields"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		return fmt.Errorf("error parsing _field_caps response: %w", err)
-	}
-	if len(r.Fields) == 0 {
+	if len(fields) == 0 {
 		logger.Info("No numeric fields found", "index_pattern", strings.Join(metricSet.Indices, ","))
 		return nil
 	}
 
 	logger.V(1).Info("Discovered fields via _field_caps",
-		"count", len(r.Fields),
+		"count", len(fields),
 		"index_pattern", strings.Join(metricSet.Indices, ","))
 
-	for fieldName, typesMap := range r.Fields {
-		// Pick the first numeric type mapping for this field.
-		var fieldType string
-		for t := range typesMap {
-			if isTypeAllowed(t) {
-				fieldType = t
-				break
-			}
-		}
-		if fieldType == "" {
+	for fieldName, typesMap := range fields {
+		if !hasNumericType(typesMap) {
 			continue
 		}
 
-		fields := metricSet.Fields.FindMetadata(fieldName)
-		if fields == nil {
+		fieldMeta := metricSet.Fields.FindMetadata(fieldName)
+		if fieldMeta == nil {
 			// Field does not match any configured pattern; skip it.
 			continue
 		}
@@ -163,7 +193,7 @@ func discoverFieldCaps(logger logr.Logger, metricSet config.MetricSet, esClient 
 			Metric:     recorder.namer.Register(fieldName),
 		}
 		recorder.indexedMetrics[fieldName] = MetricMetadata{
-			Fields:  *fields,
+			Fields:  *fieldMeta,
 			Indices: metricSet.Indices,
 		}
 	}
@@ -280,53 +310,17 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 	return provider.CustomMetricInfo{}, false, nil
 }
 
-// fieldExistsAsNumeric calls _field_caps targeted at a single field name, with
-// server-side filtering to numeric types only. Returns true iff the response
-// contains an entry for metricName with at least one numeric type mapping.
+// fieldExistsAsNumeric reports whether metricName exists as a numeric field in
+// the given index pattern, using a single-field _field_caps lookup.
 func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []string, metricName string) (bool, error) {
-	req := esapi.FieldCapsRequest{
-		Index:  indices,
-		Fields: []string{metricName},
-		// Types filter is applied server-side: non-numeric mappings are filtered out.
-		// Param is named "types" on the wire; the typed Go client exposes it via Types.
-		Types: numericTypes,
-		// IgnoreUnavailable + AllowNoIndices avoid errors on transient empty index patterns.
-		AllowNoIndices:    ptr.To(true),
-		IgnoreUnavailable: ptr.To(true),
-		// filter_path=fields drops the top-level "indices" array from the
-		// response. For an index pattern like metrics-* that matches thousands
-		// of data-stream backing indices, that array dominates the payload even
-		// though we only care about the single field's types.
-		FilterPath: []string{"fields"},
-	}
-
-	res, err := req.Do(ctx, esClient)
+	fields, err := fetchNumericFieldCaps(ctx, esClient, indices, []string{metricName})
 	if err != nil {
-		return false, fmt.Errorf("_field_caps request failed: %w", err)
+		return false, err
 	}
-	defer res.Body.Close()
-	if res.IsError() {
-		return false, fmt.Errorf("_field_caps returned %s", res.Status())
-	}
-
-	var r struct {
-		Fields map[string]map[string]struct {
-			Type string `json:"type"`
-		} `json:"fields"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		return false, fmt.Errorf("error parsing _field_caps body: %w", err)
-	}
-
-	typesForField, ok := r.Fields[metricName]
-	if !ok || len(typesForField) == 0 {
+	typesForField, ok := fields[metricName]
+	if !ok {
 		return false, nil
 	}
-	for typeName := range typesForField {
-		if isTypeAllowed(typeName) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return hasNumericType(typesForField), nil
 }
 
