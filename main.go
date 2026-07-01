@@ -83,7 +83,7 @@ func main() {
 	cmd.Flags().IntVar(&cmd.ProfilingPort, "profiling-port", 0, "port to expose pprof profiling")
 	cmd.Flags().StringVar(&cmd.DiscoveryMode, "discovery-mode", discoveryModeFull,
 		"how Elasticsearch metric discovery is performed: "+
-			"'full' (default) fetches the full index mapping every minute; "+
+			"'full' (default) scans all numeric fields via _field_caps every minute; "+
 			"'hpa' watches HorizontalPodAutoscaler objects and resolves only the metrics they reference via the _field_caps API")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)

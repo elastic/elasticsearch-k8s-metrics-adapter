@@ -8,18 +8,22 @@ This document explains how the adapter serves custom metrics when started with
 The adapter implements the Kubernetes [custom metrics API](https://github.com/kubernetes/metrics)
 so an HPA can scale a workload on a metric stored in Elasticsearch.
 
-The original (`full`) mode discovered metrics by fetching the **entire**
-`_mapping` of each configured index pattern every minute and decoding it into
+The original discovery model fetched the **entire** `_mapping` of each
+configured index pattern every minute and decoded it into
 `map[string]interface{}`. For large indices this can require a lot of memory,
-repeated every minute. The scan is also wasteful: it advertises every numeric
+repeated every minute — the OOMKills that motivated this change.
+
+`full` mode still scans every configured index on each tick, but now via
+`_field_caps` (server-side filtered to numeric types, with the bulky `indices`
+section stripped from the response), which is dramatically smaller on the wire
+than `_mapping`. It remains wasteful in one respect: it advertises every numeric
 field so that a handful of consumers can read a few.
 
 `hpa` mode inverts the model. Instead of discovering *everything* and hoping
 someone uses it, it observes **which metrics are actually referenced by HPAs**
-and resolves only those, each with a targeted `_field_caps` call (server-side
-filtered to numeric types, with the bulky `indices` section stripped from the
-response). Memory pressure drops from "the whole mapping every minute" to "one
-tiny lookup per distinct metric, once".
+and resolves only those, each with a targeted `_field_caps` call. Memory
+pressure drops from "every field, every minute" to "one tiny lookup per distinct
+metric, once".
 
 A subtlety drives the whole design: the Kubernetes API server **404s a request
 for a metric the adapter has not advertised**, before the request ever reaches
@@ -318,7 +322,7 @@ stateDiagram-v2
 
 | | `full` | `hpa` |
 |---|---|---|
-| ES discovery | full `_mapping` scan every minute | per-metric `_field_caps`, on demand |
+| ES discovery | `_field_caps` for all fields, every minute | `_field_caps` per metric, on demand |
 | What's advertised | every numeric field in the index | only metrics referenced by an HPA |
 | Trigger | scheduler tick | HPA add/update/delete events |
 | Registry populated by | `UpdateCustomMetrics` (scheduler) | `Advertise`/`Withdraw` (watcher) |

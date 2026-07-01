@@ -65,7 +65,7 @@ tolerations: []
 profilingPort: 0
 
 # discoveryMode controls how Elasticsearch metric discovery is performed.
-# 'full' (default): fetches the full index mapping every minute.
+# 'full' (default): scans all numeric fields via _field_caps every minute.
 # 'hpa': watches HorizontalPodAutoscaler objects and resolves only the metrics
 #        they reference via the _field_caps API (requires RBAC to watch HPAs).
 discoveryMode: full
