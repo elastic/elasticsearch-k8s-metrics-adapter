@@ -91,10 +91,14 @@ func (mc *MetricsClient) numericTypesFilter(ctx context.Context) []string {
 }
 
 // supportsTypesFilter reports whether the connected cluster accepts the
-// _field_caps `types=` parameter, caching the result after the first successful
-// probe. A probe error is not cached (so a transient failure is retried) and is
-// treated as "unsupported" so discovery degrades to client-side filtering
-// rather than failing outright.
+// _field_caps `types=` parameter, caching the result after the first probe. A
+// probe error is treated as "unsupported" — discovery degrades to client-side
+// filtering, which is correctness-equivalent — and is cached like a successful
+// probe. Caching the failure matters: omitting types= is a safe fallback, so a
+// persistent probe failure (permission denied on the info endpoint, a
+// misconfigured proxy) must not re-probe and re-log on every discovery/resolve.
+// The trade-off is that a cluster unreachable at the first probe stays on the
+// client-side path until the adapter restarts.
 func (mc *MetricsClient) supportsTypesFilter(ctx context.Context) bool {
 	mc.lock.RLock()
 	cached := mc.typesFilterSupported
@@ -109,7 +113,7 @@ func (mc *MetricsClient) supportsTypesFilter(ctx context.Context) bool {
 			"Could not detect Elasticsearch version; omitting the _field_caps types= filter and filtering client-side",
 			"error", err.Error(),
 		)
-		return false
+		supported = false
 	}
 
 	mc.lock.Lock()
