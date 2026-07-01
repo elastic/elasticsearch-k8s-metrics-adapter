@@ -291,6 +291,15 @@ func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, erro
 // Withdraw removes a previously advertised metric from the served set. It is a
 // no-op if the metric was not advertised. Used when no HPA references the
 // metric any more.
+//
+// Withdraw clears only the registry's routing/advertisement tables. It does not
+// clear the resolving client's own metric cache (e.g. the ES client's
+// metrics/indexedMetrics maps populated by ResolveCustomMetric). That is
+// deliberate: if the metric is referenced again, Advertise → ResolveCustomMetric
+// takes the fast path and re-registers it with no ES call. The trade-off is that
+// a re-advertised metric is served from the cached positive without re-validating
+// against Elasticsearch; the cache is bounded by the small set of distinct
+// HPA-referenced names, so this is not an unbounded-growth concern.
 func (r *Registry) Withdraw(metricName string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()

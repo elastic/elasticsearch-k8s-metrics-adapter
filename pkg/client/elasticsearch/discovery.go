@@ -264,7 +264,9 @@ func recordStaticFields(cfg config.MetricServer, rec *recorder) error {
 // value queries via GetMetricByName / GetMetricBySelector can serve it without
 // re-querying ES.
 func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
-	// Fast path: already known.
+	// Fast path: already known. Entries here outlive registry.Withdraw (the
+	// registry clears its own tables but not this cache), so a re-referenced
+	// metric resolves with no ES call. Bounded by distinct HPA-referenced names.
 	mc.lock.RLock()
 	if info, ok := mc.metrics[metricName]; ok {
 		mc.lock.RUnlock()
