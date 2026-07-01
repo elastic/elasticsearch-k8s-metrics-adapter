@@ -165,7 +165,10 @@ func (w *Watcher) advertiseOne(name string) {
 		w.logger.Error(err, "Failed to advertise metric referenced by an HPA; will retry", "metric", name)
 		w.setUnresolved(name, true)
 	case !found:
-		w.logger.Info("HPA references a metric not served by any client", "metric", name)
+		// Advertise only consults the registry's resolver clients (the
+		// Elasticsearch clients). A metric served by another backend via periodic
+		// discovery is invisible here, so scope the message to what was checked.
+		w.logger.Info("HPA references a metric not found in any Elasticsearch metric set", "metric", name)
 		w.setUnresolved(name, false)
 	default:
 		w.logger.Info("Advertised metric referenced by an HPA", "metric", name)
