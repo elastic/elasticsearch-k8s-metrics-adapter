@@ -151,8 +151,13 @@ func (w *Watcher) advertise(names []string) {
 // it records the name in the unresolved set so it is retried on a later HPA
 // event; on success or a definitive "not served" answer it clears the name.
 func (w *Watcher) advertiseOne(name string) {
-	// Best-effort, bounded resolution per metric.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// This resolve runs synchronously on the informer's handler goroutine, so a
+	// burst of newly-referenced metrics is processed one at a time and other HPA
+	// events queue behind it. That is acceptable: the set of distinct referenced
+	// metrics is small and each resolve is a single tiny _field_caps call. The
+	// per-metric timeout bounds the worst case (a hung Elasticsearch) so one bad
+	// metric cannot stall the handler indefinitely.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	found, err := w.registry.Advertise(ctx, name)
 	cancel()
 	switch {
