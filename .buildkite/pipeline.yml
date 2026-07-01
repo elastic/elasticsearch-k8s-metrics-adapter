@@ -53,17 +53,28 @@ steps:
 
   - label: ":go: :kubernetes: Run e2e tests (hpa discovery mode)"
     command: |
+      set -euo pipefail
       trap 'make e2e-down || true' EXIT
       # Go is preinstalled at /usr/local/go on the tooling image; just put it on PATH.
       export PATH=$PATH:/usr/local/go/bin
-      # Install kubectl
-      curl -sSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -sSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+      # Install kubectl. -f makes curl fail on an HTTP error instead of writing the
+      # error body into the target file, which would only fail later on exec.
+      KUBECTL_VERSION="$(curl -sSLf https://dl.k8s.io/release/stable.txt)"
+      curl -sSLfo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
       chmod +x /usr/local/bin/kubectl
       # Install kind
-      curl -sSLo /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
+      curl -sSLfo /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64"
       chmod +x /usr/local/bin/kind
-      # Install helm
-      curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      # Install helm from a pinned release tarball and verify its checksum, rather
+      # than piping a remote install script straight into bash.
+      HELM_VERSION="v3.17.3"
+      HELM_TARBALL="helm-${HELM_VERSION}-linux-amd64.tar.gz"
+      curl -sSLfo "/tmp/${HELM_TARBALL}" "https://get.helm.sh/${HELM_TARBALL}"
+      curl -sSLfo "/tmp/${HELM_TARBALL}.sha256sum" "https://get.helm.sh/${HELM_TARBALL}.sha256sum"
+      EXPECTED_SHA="$(cut -d ' ' -f1 < "/tmp/${HELM_TARBALL}.sha256sum")"
+      echo "${EXPECTED_SHA}  /tmp/${HELM_TARBALL}" | sha256sum --check --strict -
+      tar -xzf "/tmp/${HELM_TARBALL}" -C /tmp
+      install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
       make e2e-up
       make e2e
     artifact_paths:
