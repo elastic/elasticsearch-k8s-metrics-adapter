@@ -8,7 +8,7 @@ This document explains how the adapter serves custom metrics when started with
 The adapter implements the Kubernetes [custom metrics API](https://github.com/kubernetes/metrics)
 so an HPA can scale a workload on a metric stored in Elasticsearch.
 
-The original (`periodic`) mode discovered metrics by fetching the **entire**
+The original (`full`) mode discovered metrics by fetching the **entire**
 `_mapping` of each configured index pattern every minute and decoding it into
 `map[string]interface{}`. For large indices this can require a lot of memory,
 repeated every minute. The scan is also wasteful: it advertises every numeric
@@ -314,9 +314,9 @@ stateDiagram-v2
   `ResolveCustomMetric`'s fast path returns the cached metadata with no ES call.
   The set of distinct HPA-referenced metrics is small, so this cache is bounded.
 
-## `periodic` vs `hpa` at a glance
+## `full` vs `hpa` at a glance
 
-| | `periodic` | `hpa` |
+| | `full` | `hpa` |
 |---|---|---|
 | ES discovery | full `_mapping` scan every minute | per-metric `_field_caps`, on demand |
 | What's advertised | every numeric field in the index | only metrics referenced by an HPA |
@@ -332,7 +332,7 @@ their list endpoints are cheap.
 
 ## Known limitations
 
-`hpa` mode is a deliberate trade-off against `periodic`. `periodic` remains the
+`hpa` mode is a deliberate trade-off against `full`. `full` remains the
 default; switch to `hpa` only if the points below are acceptable for your
 deployment.
 
@@ -343,7 +343,7 @@ In `hpa` mode `ListAllCustomMetrics` (`GET /apis/custom.metrics.k8s.io/v1beta1/`
 by a live HPA, and the set changes as HPAs come and go. Autoscaling itself is
 unaffected — an HPA names the metric it needs — but you can no longer enumerate
 every metric available to scale on. This is an accepted, deliberate loss of
-enumeration. Use `periodic` if you rely on that enumeration.
+enumeration. Use `full` if you rely on that enumeration.
 
 ### Cold-start window for newly-referenced metrics
 
@@ -379,7 +379,7 @@ growth concern.
 ### `rename` is not supported in `hpa` mode
 
 The `rename` config directive (`matches` / `as`) lets you expose ES fields under
-a different name to Kubernetes. It works in `periodic` mode because
+a different name to Kubernetes. It works in `full` mode because
 `discoverMetrics()` walks every field and calls `namer.Register(realFieldName)`
 for each one, building the alias → real-name map before any HPA query arrives.
 
@@ -388,4 +388,4 @@ When `ResolveCustomMetric` receives the alias from the HPA it probes `_field_cap
 with the alias name — which doesn't exist in Elasticsearch — and silently returns
 not-found. The metric is never advertised.
 
-If you rely on `rename`, use `--discovery-mode=periodic` for now.
+If you rely on `rename`, use `--discovery-mode=full` for now.

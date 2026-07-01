@@ -62,8 +62,8 @@ const (
 	elastisearchMetricServerType = "elasticsearch"
 	customMetricServerType       = "custom"
 
-	discoveryModePeriodic = "periodic"
-	discoveryModeHPA      = "hpa"
+	discoveryModeFull = "full"
+	discoveryModeHPA  = "hpa"
 )
 
 var (
@@ -81,9 +81,9 @@ func main() {
 	cmd.Flags().BoolVar(&cmd.Insecure, "insecure", false, "if true authentication and authorization are disabled, only to be used in dev mode")
 	cmd.Flags().IntVar(&cmd.MonitoringPort, "monitoring-port", 9090, "port to expose readiness and Prometheus metrics")
 	cmd.Flags().IntVar(&cmd.ProfilingPort, "profiling-port", 0, "port to expose pprof profiling")
-	cmd.Flags().StringVar(&cmd.DiscoveryMode, "discovery-mode", discoveryModePeriodic,
+	cmd.Flags().StringVar(&cmd.DiscoveryMode, "discovery-mode", discoveryModeFull,
 		"how Elasticsearch metric discovery is performed: "+
-			"'periodic' (default) fetches the full index mapping every minute; "+
+			"'full' (default) fetches the full index mapping every minute; "+
 			"'hpa' watches HorizontalPodAutoscaler objects and resolves only the metrics they reference via the _field_caps API")
 	cmd.Flags().AddGoFlagSet(flag.CommandLine) // make sure we get the klog flags
 	err := cmd.Flags().Parse(os.Args)
@@ -96,10 +96,10 @@ func main() {
 	logger = log.ForPackage("main")
 
 	switch cmd.DiscoveryMode {
-	case discoveryModePeriodic, discoveryModeHPA:
+	case discoveryModeFull, discoveryModeHPA:
 	default:
 		logErrorAndExit(
-			fmt.Errorf("invalid value %q (expected %q or %q)", cmd.DiscoveryMode, discoveryModePeriodic, discoveryModeHPA),
+			fmt.Errorf("invalid value %q (expected %q or %q)", cmd.DiscoveryMode, discoveryModeFull, discoveryModeHPA),
 			"Invalid --discovery-mode")
 	}
 
@@ -148,7 +148,7 @@ func main() {
 		)
 	} else {
 		scheduledClients = metricsClients
-		logger.Info("Discovery mode is periodic")
+		logger.Info("Discovery mode is full")
 	}
 
 	metricsRegistry := registry.NewRegistry()

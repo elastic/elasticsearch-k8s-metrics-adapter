@@ -149,7 +149,7 @@ it/
 - **APIService readiness** is the most common flake source: always gate tests on
   `Available=True`, not just pod Ready.
 - **`discoveryMode` default**: `helm/values.yaml` currently defaults to
-  `periodic`; `values-e2e.yaml` must set `hpa` explicitly.
+  `full`; `values-e2e.yaml` must set `hpa` explicitly.
 - **Config shape**: the ES host is injected via `${HPA_ELASTICSEARCH_HOST}`
   env expansion (see `helm/templates/config.yaml` + `envFrom`); point it at the
   in-cluster `mock-elasticsearch` Service and supply dummy credentials.
