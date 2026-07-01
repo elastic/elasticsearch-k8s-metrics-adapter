@@ -330,6 +330,17 @@ In `hpa` mode, **only Elasticsearch clients** take the resolver path; other
 client types (e.g. custom-api) keep going through the periodic scheduler because
 their list endpoints are cheap.
 
+## Elasticsearch version compatibility
+
+Both modes use the `_field_caps` `types=` parameter to filter to numeric fields
+server-side. That parameter was added in **Elasticsearch 8.2**; older clusters
+reject unknown query parameters with HTTP 400. The adapter detects the cluster
+version (via the info endpoint, cached after the first successful probe) and, on
+clusters older than 8.2, omits `types=` and filters the field types client-side
+instead. All supported Elasticsearch versions therefore work; pre-8.2 clusters
+just receive a larger `_field_caps` response. If the version cannot be
+determined, the adapter degrades to the client-side path.
+
 ## Known limitations
 
 `hpa` mode is a deliberate trade-off against `full`. `full` remains the

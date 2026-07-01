@@ -18,6 +18,7 @@
 package elasticsearch
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -90,7 +91,9 @@ metricServers:
 	rec := newRecorder(noopNamer)
 
 	metricSet := testConfig.MetricServers[0].MetricSets[0]
-	require.NoError(t, discoverFieldCaps(logr.Discard(), metricSet, esClient, rec))
+	// Pass nil types to exercise the client-side filter (older-cluster path):
+	// the mock returns a keyword field regardless, and it must be excluded.
+	require.NoError(t, discoverFieldCaps(logr.Discard(), metricSet, esClient, rec, nil))
 
 	got := make([]string, 0, len(rec.metrics))
 	for metric := range rec.metrics {
@@ -125,4 +128,64 @@ metricServers:
 		// "some.keyword.field" is absent: keyword is not a numeric type
 	}
 	assert.Empty(t, cmp.Diff(want, got))
+}
+
+func TestParseMajorMinor(t *testing.T) {
+	tests := []struct {
+		version      string
+		major, minor int
+		wantErr      bool
+	}{
+		{version: "9.4.2", major: 9, minor: 4},
+		{version: "8.2.0", major: 8, minor: 2},
+		{version: "8.1.3", major: 8, minor: 1},
+		{version: "8.2.0-SNAPSHOT", major: 8, minor: 2},
+		{version: "7.17.10", major: 7, minor: 17},
+		{version: "8", wantErr: true},
+		{version: "", wantErr: true},
+		{version: "x.y.z", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.version, func(t *testing.T) {
+			major, minor, err := parseMajorMinor(tc.version)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.major, major)
+			assert.Equal(t, tc.minor, minor)
+		})
+	}
+}
+
+func TestClusterSupportsFieldCapsTypes(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		want    bool
+	}{
+		{"9.x supports", "9.4.2", true},
+		{"8.2 is the floor", "8.2.0", true},
+		{"8.3 supports", "8.3.1", true},
+		{"8.1 too old", "8.1.3", false},
+		{"7.17 too old", "7.17.10", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Elastic-Product", "Elasticsearch")
+				_, _ = w.Write([]byte(`{"version":{"number":"` + tc.version + `"}}`))
+			}))
+			defer srv.Close()
+
+			esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
+			require.NoError(t, err)
+
+			got, err := clusterSupportsFieldCapsTypes(context.Background(), esClient)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }
