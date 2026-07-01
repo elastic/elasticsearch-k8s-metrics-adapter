@@ -56,6 +56,16 @@ import (
 //     the scheduler after each discovery cycle (used by custom_api clients).
 //   - Proactively, via Advertise, called by the HPA watcher when it sees a new
 //     metric referenced by an HPA (used by Elasticsearch clients in hpa mode).
+
+// advertisedEntry records a metric advertised via Advertise together with the
+// resolver client that advertised it. Withdraw uses clientName to remove only
+// that client from the routing table, leaving intact any other backend serving
+// the same CustomMetricInfo.
+type advertisedEntry struct {
+	info       provider.CustomMetricInfo
+	clientName string
+}
+
 type Registry struct {
 	logger logr.Logger
 	lock   sync.RWMutex
@@ -68,7 +78,9 @@ type Registry struct {
 
 	// advertisedByName indexes metrics registered via Advertise by their plain
 	// metric name so they can be withdrawn by name when no HPA references them.
-	advertisedByName map[string]provider.CustomMetricInfo
+	// The entry also records which resolver client advertised the metric so
+	// Withdraw removes only that client.
+	advertisedByName map[string]advertisedEntry
 
 	// resolverClients are consulted in order by Advertise to find which client
 	// serves a metric name referenced by an HPA, performing the on-demand
@@ -82,7 +94,7 @@ func NewRegistry() *Registry {
 		lock:             sync.RWMutex{},
 		customMetrics:    make(map[provider.CustomMetricInfo]*metricClients),
 		externalMetrics:  make(map[provider.ExternalMetricInfo]*metricClients),
-		advertisedByName: make(map[string]provider.CustomMetricInfo),
+		advertisedByName: make(map[string]advertisedEntry),
 	}
 }
 
@@ -253,7 +265,7 @@ func (r *Registry) registerResolved(info provider.CustomMetricInfo, c client.Int
 		r.customMetrics[info] = newMetricClients()
 	}
 	r.customMetrics[info].addOrUpdateClient(c)
-	r.advertisedByName[info.Metric] = info
+	r.advertisedByName[info.Metric] = advertisedEntry{info: info, clientName: c.GetConfiguration().Name}
 }
 
 // Advertise resolves a metric by name — consulting each resolver client in turn
@@ -292,6 +304,12 @@ func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, erro
 // no-op if the metric was not advertised. Used when no HPA references the
 // metric any more.
 //
+// Withdraw removes only the client that Advertise registered for this metric. If
+// another backend still serves the same CustomMetricInfo — e.g. a custom_api
+// client populated by the periodic scheduler advertising the same pods/<name> —
+// that registration is left intact and the metric stays served and routable.
+// The routing entry is deleted only once no client is left.
+//
 // Withdraw clears only the registry's routing/advertisement tables. It does not
 // clear the resolving client's own metric cache (e.g. the ES client's
 // metrics/indexedMetrics maps populated by ResolveCustomMetric). That is
@@ -303,11 +321,15 @@ func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, erro
 func (r *Registry) Withdraw(metricName string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	info, ok := r.advertisedByName[metricName]
+	entry, ok := r.advertisedByName[metricName]
 	if !ok {
 		return
 	}
-	delete(r.customMetrics, info)
+	if clients := r.customMetrics[entry.info]; clients != nil {
+		if empty := clients.removeClient(entry.clientName); empty {
+			delete(r.customMetrics, entry.info)
+		}
+	}
 	delete(r.advertisedByName, metricName)
 	r.logger.V(1).Info("Custom metric withdrawn", "metric", metricName)
 }

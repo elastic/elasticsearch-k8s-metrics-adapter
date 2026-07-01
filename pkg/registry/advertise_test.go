@@ -113,6 +113,29 @@ func TestRegistry_AdvertiseAndWithdraw(t *testing.T) {
 	r.Withdraw("never-advertised")
 }
 
+func TestRegistry_WithdrawKeepsOtherBackends(t *testing.T) {
+	info := provider.CustomMetricInfo{Metric: "foo"}
+
+	// A periodically-discovered backend (e.g. custom_api) already serves foo.
+	periodic := newResolverFakeClient("periodic", "foo")
+	r := NewRegistry()
+	r.UpdateCustomMetrics(periodic, map[provider.CustomMetricInfo]struct{}{info: {}})
+
+	// An ES resolver client advertises the same metric because an HPA references it.
+	resolver := newResolverFakeClient("resolver", "foo")
+	r.WithResolverClients([]client.Interface{resolver})
+	found, err := r.Advertise(context.Background(), "foo")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	// Withdrawing (last HPA reference gone) must not evict the periodic backend.
+	r.Withdraw("foo")
+	assert.ElementsMatch(t, []provider.CustomMetricInfo{info}, r.ListAllCustomMetrics())
+	got, err := r.GetCustomMetricClient(info)
+	require.NoError(t, err)
+	assert.Equal(t, "periodic", got.GetConfiguration().Name)
+}
+
 func TestRegistry_AdvertiseNotServed(t *testing.T) {
 	c := newResolverFakeClient("c1") // knows nothing
 	r := NewRegistry().WithResolverClients([]client.Interface{c})
