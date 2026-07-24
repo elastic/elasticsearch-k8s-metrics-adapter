@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/itchyny/gojq"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	esv8 "github.com/elastic/go-elasticsearch/v9"
@@ -36,21 +38,195 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
-var allowedTypes = map[string]struct{}{
-	"byte":          {},
-	"double":        {},
-	"float":         {},
-	"half_float":    {},
-	"integer":       {},
-	"long":          {},
-	"scaled_float":  {},
-	"short":         {},
-	"unsigned_long": {},
+// numericTypes is the single source of truth for the Elasticsearch numeric
+// field types the adapter is willing to expose. It is used as the `types=`
+// filter on _field_caps requests so non-numeric fields are excluded server-side.
+var numericTypes = []string{
+	"byte", "double", "float", "half_float",
+	"integer", "long", "scaled_float", "short", "unsigned_long",
 }
 
+var numericTypesSet = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(numericTypes))
+	for _, t := range numericTypes {
+		m[t] = struct{}{}
+	}
+	return m
+}()
+
 func isTypeAllowed(t string) bool {
-	_, ok := allowedTypes[t]
+	_, ok := numericTypesSet[t]
 	return ok
+}
+
+// fieldTypes is the per-field slice of a _field_caps response: a map from ES
+// type name to that type's capabilities. Only the type name matters to us, so
+// the value struct carries just "type".
+type fieldTypes = map[string]struct {
+	Type string `json:"type"`
+}
+
+// fieldCaps maps a field name to its fieldTypes. It is the shape decoded from
+// the "fields" object of a _field_caps response.
+type fieldCaps = map[string]fieldTypes
+
+// fieldCapsTypesMinMajor / fieldCapsTypesMinMinor is the first Elasticsearch
+// version that accepts the _field_caps `types=` query parameter
+// (elastic/elasticsearch#83636, 8.2.0). Older clusters reject it as an unknown
+// parameter with HTTP 400.
+const (
+	fieldCapsTypesMinMajor = 8
+	fieldCapsTypesMinMinor = 2
+)
+
+// numericTypesFilter returns the value to pass as the _field_caps `types=`
+// filter: numericTypes when the connected cluster supports it (ES >= 8.2), or
+// nil to omit it on older clusters. When nil, callers filter the (larger)
+// response client-side via hasNumericType, so all ES versions stay supported.
+func (mc *MetricsClient) numericTypesFilter(ctx context.Context) []string {
+	if mc.supportsTypesFilter(ctx) {
+		return numericTypes
+	}
+	return nil
+}
+
+// supportsTypesFilter reports whether the connected cluster accepts the
+// _field_caps `types=` parameter, caching the result after the first successful
+// probe. A probe error is not cached (so a transient failure is retried) and is
+// treated as "unsupported" so discovery degrades to client-side filtering
+// rather than failing outright.
+func (mc *MetricsClient) supportsTypesFilter(ctx context.Context) bool {
+	mc.lock.RLock()
+	cached := mc.typesFilterSupported
+	mc.lock.RUnlock()
+	if cached != nil {
+		return *cached
+	}
+
+	supported, err := clusterSupportsFieldCapsTypes(ctx, mc.Client)
+	if err != nil {
+		mc.logger.V(1).Info(
+			"Could not detect Elasticsearch version; omitting the _field_caps types= filter and filtering client-side",
+			"error", err.Error(),
+		)
+		return false
+	}
+
+	mc.lock.Lock()
+	mc.typesFilterSupported = &supported
+	mc.lock.Unlock()
+	return supported
+}
+
+// clusterSupportsFieldCapsTypes queries the cluster info endpoint and reports
+// whether its version is >= 8.2, the first release that supports the
+// _field_caps `types=` filter.
+func clusterSupportsFieldCapsTypes(ctx context.Context, esClient *esv8.Client) (bool, error) {
+	res, err := esClient.Info(esClient.Info.WithContext(ctx))
+	if err != nil {
+		return false, fmt.Errorf("elasticsearch info request failed: %w", err)
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		return false, fmt.Errorf("[%s] elasticsearch info error", res.Status())
+	}
+
+	var info struct {
+		Version struct {
+			Number string `json:"number"`
+		} `json:"version"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
+		return false, fmt.Errorf("error parsing elasticsearch info response: %w", err)
+	}
+
+	major, minor, err := parseMajorMinor(info.Version.Number)
+	if err != nil {
+		return false, err
+	}
+	if major != fieldCapsTypesMinMajor {
+		return major > fieldCapsTypesMinMajor, nil
+	}
+	return minor >= fieldCapsTypesMinMinor, nil
+}
+
+// parseMajorMinor extracts the major and minor components from an Elasticsearch
+// version.number such as "9.4.2" or "8.2.0-SNAPSHOT".
+func parseMajorMinor(version string) (int, int, error) {
+	v := version
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) < 2 {
+		return 0, 0, fmt.Errorf("unexpected elasticsearch version %q", version)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("unexpected elasticsearch version %q: %w", version, err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("unexpected elasticsearch version %q: %w", version, err)
+	}
+	return major, minor, nil
+}
+
+// fetchNumericFieldCaps runs a _field_caps request for the given fields against
+// the index pattern and returns the decoded "fields" map. It is shared by
+// discoverFieldCaps (fields=["*"]) and fieldExistsAsNumeric (a single field).
+//
+// When types is non-empty it is sent as the server-side type filter; callers
+// pass numericTypes on clusters that support it (ES >= 8.2) and nil on older
+// clusters, which reject the unknown "types" parameter with HTTP 400. When
+// omitted, the response carries all field types and callers must filter
+// client-side via hasNumericType — correctness is unchanged, only the payload
+// is larger.
+//
+// The request tolerates missing or empty index patterns
+// (AllowNoIndices/IgnoreUnavailable) and uses filter_path=fields to drop the
+// top-level "indices" array from the response. For an index pattern like
+// metrics-* that matches thousands of data-stream backing indices, that array
+// dominates the payload even though we only care about field types.
+func fetchNumericFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields, types []string) (fieldCaps, error) {
+	req := esapi.FieldCapsRequest{
+		Index:             indices,
+		Fields:            fields,
+		AllowNoIndices:    ptr.To(true),
+		IgnoreUnavailable: ptr.To(true),
+		FilterPath:        []string{"fields"},
+	}
+	if len(types) > 0 {
+		req.Types = types
+	}
+	res, err := req.Do(ctx, esClient)
+	if err != nil {
+		return nil, fmt.Errorf("_field_caps request failed: %w", err)
+	}
+	defer res.Body.Close()
+	if res.IsError() {
+		return nil, fmt.Errorf("[%s] _field_caps error for %v", res.Status(), indices)
+	}
+	var r struct {
+		Fields fieldCaps `json:"fields"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return nil, fmt.Errorf("error parsing _field_caps response: %w", err)
+	}
+	return r.Fields, nil
+}
+
+// hasNumericType reports whether the given per-field type set contains at least
+// one type the adapter is willing to expose. _field_caps is already filtered
+// server-side via Types, but we re-check client-side so correctness does not
+// depend on that filter being honored.
+func hasNumericType(types fieldTypes) bool {
+	for t := range types {
+		if isTypeAllowed(t) {
+			return true
+		}
+	}
+	return false
 }
 
 type MetricMetadata struct {
@@ -68,42 +244,14 @@ func (mc *MetricsClient) discoverMetrics() error {
 	}
 	metricRecorder := newRecorder(namer)
 
-	// We first record static fields, they do not require to read the mapping
-	for _, metricSet := range mc.metricServerCfg.MetricSets {
-		for _, field := range metricSet.Fields {
-			if len(field.Name) > 0 {
-				search := field.Search
-				search.Template = template.Must(template.New("").Parse(search.Body))
-				metricResultQuery, err := gojq.Parse(search.MetricPath)
-				if err != nil {
-					return fmt.Errorf("error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
-				}
-				search.MetricResultQuery = metricResultQuery
-				timestampResultQuery, err := gojq.Parse(search.TimestampPath)
-				if err != nil {
-					return fmt.Errorf("error while parsing timestampResultQuery for field %s: error: %v", field.Name, err)
-
-				}
-				search.TimestampResultQuery = timestampResultQuery
-				// This is a static field, save the request body and the metric path
-				metricRecorder.indexedMetrics[field.Name] = MetricMetadata{
-					Search:  &search,
-					Indices: metricSet.Indices,
-				}
-				metricRecorder.metrics[field.Name] = provider.CustomMetricInfo{
-					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
-						Group:    "",
-						Resource: "pods",
-					},
-					Namespaced: true,
-					Metric:     field.Name,
-				}
-			}
-		}
+	// We first record static fields, they do not require to read the mapping.
+	if err := recordStaticFields(mc.metricServerCfg, metricRecorder); err != nil {
+		return err
 	}
 
+	types := mc.numericTypesFilter(context.Background())
 	for _, metricSet := range mc.metricServerCfg.MetricSets {
-		if err := getMappingFor(mc.logger, metricSet, mc.Client, metricRecorder); err != nil {
+		if err := discoverFieldCaps(mc.logger, metricSet, mc.Client, metricRecorder, types); err != nil {
 			return err
 		}
 	}
@@ -116,50 +264,52 @@ func (mc *MetricsClient) discoverMetrics() error {
 	return nil
 }
 
-func getMappingFor(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder) error {
-	req := esapi.IndicesGetMappingRequest{Index: metricSet.Indices}
-	res, err := req.Do(context.Background(), esClient)
+// discoverFieldCaps calls _field_caps for all numeric field types in the
+// configured index pattern and registers every matching field with the recorder.
+//
+// It replaces the former getMappingFor / _processMappingDocument approach which
+// fetched the full nested _mapping response (~43 MB for metrics-*) and walked
+// it recursively. _field_caps returns a flat structure, is filtered server-side
+// to numeric types, and is ~5x smaller on the wire (see fetchNumericFieldCaps).
+func discoverFieldCaps(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder, types []string) error {
+	fields, err := fetchNumericFieldCaps(context.Background(), esClient, metricSet.Indices, []string{"*"}, types)
 	if err != nil {
-		return fmt.Errorf("discovery error, got response: %s", err)
+		return err
 	}
-	defer res.Body.Close()
-	if res.IsError() {
-		return fmt.Errorf("[%s] Error getting index mapping %v", res.Status(), metricSet.Indices)
-	} else {
-		// Deserialize the response into a map.
-		var r map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-			return fmt.Errorf("error parsing the response body: %s", err)
-		} else {
-			if len(r) == 0 {
-				logger.Info("Mapping is empty", "index_pattern", strings.Join(metricSet.Indices, ","))
-				return nil
-			}
-			// Process mapping
-			for _, indexMapping := range r {
-				m := indexMapping.(map[string]interface{})
-				mapping, hasMapping := m["mappings"]
-				if !hasMapping {
-					return fmt.Errorf("discovery error: no 'mapping' field in %s", metricSet.Indices)
-				}
-				recorder.processMappingDocument(mapping, metricSet.Fields, metricSet.Indices)
-			}
+	if len(fields) == 0 {
+		logger.Info("No numeric fields found", "index_pattern", strings.Join(metricSet.Indices, ","))
+		return nil
+	}
+
+	logger.V(1).Info("Discovered fields via _field_caps",
+		"count", len(fields),
+		"index_pattern", strings.Join(metricSet.Indices, ","))
+
+	for fieldName, typesMap := range fields {
+		if !hasNumericType(typesMap) {
+			continue
+		}
+
+		fieldMeta := metricSet.Fields.FindMetadata(fieldName)
+		if fieldMeta == nil {
+			// Field does not match any configured pattern; skip it.
+			continue
+		}
+
+		recorder.metrics[fieldName] = provider.CustomMetricInfo{
+			GroupResource: schema.GroupResource{
+				Group:    "",
+				Resource: "pods",
+			},
+			Namespaced: true,
+			Metric:     recorder.namer.Register(fieldName),
+		}
+		recorder.indexedMetrics[fieldName] = MetricMetadata{
+			Fields:  *fieldMeta,
+			Indices: metricSet.Indices,
 		}
 	}
 	return nil
-}
-
-func (r *recorder) processMappingDocument(mapping interface{}, fields config.FieldsSet, indices []string) {
-	tm, ok := mapping.(map[string]interface{})
-	if !ok {
-		return
-	}
-	rp := tm["properties"]
-	rpm, ok := rp.(map[string]interface{})
-	if !ok {
-		return
-	}
-	r._processMappingDocument("", rpm, fields, indices)
 }
 
 func newRecorder(namer config.Namer) *recorder {
@@ -176,62 +326,116 @@ type recorder struct {
 	namer          config.Namer
 }
 
-func (r *recorder) _processMappingDocument(root string, d map[string]interface{}, fieldsSet config.FieldsSet, indices []string) {
-	for k, t := range d {
-		if k == "*" {
-			continue
-		}
-		if k == "properties" {
-			tm, ok := t.(map[string]interface{})
-			if !ok {
+// recordStaticFields registers the config-defined static (search-based) metrics
+// into the recorder. These fields carry an explicit Search body and are computed
+// via a query, so unlike numeric mapping fields they require no _mapping or
+// _field_caps lookup to be served. It is shared by periodic discovery and, in
+// hpa discovery mode, by client construction (where discoverMetrics never runs),
+// so that an HPA referencing a static field can still resolve it.
+func recordStaticFields(cfg config.MetricServer, rec *recorder) error {
+	for _, metricSet := range cfg.MetricSets {
+		for _, field := range metricSet.Fields {
+			if len(field.Name) == 0 {
 				continue
 			}
-			r._processMappingDocument(root, tm, fieldsSet, indices)
-		} else {
-			// Is there a properties child ?
-			child, ok := t.(map[string]interface{})
-			if !ok {
-				continue
+			search := field.Search
+			search.Template = template.Must(template.New("").Parse(search.Body))
+			metricResultQuery, err := gojq.Parse(search.MetricPath)
+			if err != nil {
+				return fmt.Errorf("error while parsing metricResultQuery for field %s: error: %v", field.Name, err)
 			}
-			if _, hasProperties := child["properties"]; hasProperties {
-				var newRoot string
-				if root == "" {
-					newRoot = k
-				} else {
-					newRoot = fmt.Sprintf("%s.%s", root, k)
-				}
-				r._processMappingDocument(newRoot, child, fieldsSet, indices)
-			} else {
-				// Ensure that we have a type
-				if t, hasType := child["type"]; !(hasType && isTypeAllowed(t.(string))) {
-					continue
-				}
-				metricName := ""
-				// New metric
-				if root == "" {
-					metricName = k
-				} else {
-					metricName = fmt.Sprintf("%s.%s", root, k)
-				}
-
-				fields := fieldsSet.FindMetadata(metricName)
-				if fields == nil {
-					// field does not match a pattern, do not register it as available
-					continue
-				}
-				r.metrics[metricName] = provider.CustomMetricInfo{
-					GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
-						Group:    "",
-						Resource: "pods",
-					},
-					Namespaced: true,
-					Metric:     r.namer.Register(metricName),
-				}
-				r.indexedMetrics[metricName] = MetricMetadata{
-					Fields:  *fields,
-					Indices: indices,
-				}
+			search.MetricResultQuery = metricResultQuery
+			timestampResultQuery, err := gojq.Parse(search.TimestampPath)
+			if err != nil {
+				return fmt.Errorf("error while parsing timestampResultQuery for field %s: error: %v", field.Name, err)
+			}
+			search.TimestampResultQuery = timestampResultQuery
+			// This is a static field, save the request body and the metric path.
+			rec.indexedMetrics[field.Name] = MetricMetadata{
+				Search:  &search,
+				Indices: metricSet.Indices,
+			}
+			rec.metrics[field.Name] = provider.CustomMetricInfo{
+				GroupResource: schema.GroupResource{ // TODO: infer resource from configuration
+					Group:    "",
+					Resource: "pods",
+				},
+				Namespaced: true,
+				Metric:     field.Name,
 			}
 		}
 	}
+	return nil
 }
+
+// ResolveCustomMetric checks whether the given metric is exposed by any configured
+// metric set on this client. It uses the _field_caps API (server-side filtered to
+// numeric types) which returns a much smaller payload than _mapping.
+//
+// On success, the metric is registered in the client's internal maps so subsequent
+// value queries via GetMetricByName / GetMetricBySelector can serve it without
+// re-querying ES.
+func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
+	// Fast path: already known. Entries here outlive registry.Withdraw (the
+	// registry clears its own tables but not this cache), so a re-referenced
+	// metric resolves with no ES call. Bounded by distinct HPA-referenced names.
+	mc.lock.RLock()
+	if info, ok := mc.metrics[metricName]; ok {
+		mc.lock.RUnlock()
+		return info, true, nil
+	}
+	mc.lock.RUnlock()
+
+	types := mc.numericTypesFilter(ctx)
+	for _, metricSet := range mc.metricServerCfg.MetricSets {
+		// Skip metric sets whose configured patterns wouldn't accept this name.
+		fields := metricSet.Fields.FindMetadata(metricName)
+		if fields == nil {
+			continue
+		}
+
+		found, err := fieldExistsAsNumeric(ctx, mc.Client, metricSet.Indices, metricName, types)
+		if err != nil {
+			return provider.CustomMetricInfo{}, false, err
+		}
+		if !found {
+			continue
+		}
+
+		mc.lock.Lock()
+		// Recheck after acquiring write lock; another goroutine may have raced us.
+		if info, ok := mc.metrics[metricName]; ok {
+			mc.lock.Unlock()
+			return info, true, nil
+		}
+		info := provider.CustomMetricInfo{
+			GroupResource: schema.GroupResource{Group: "", Resource: "pods"},
+			Namespaced:    true,
+			Metric:        mc.namer.Register(metricName),
+		}
+		mc.metrics[metricName] = info
+		mc.indexedMetrics[metricName] = MetricMetadata{
+			Fields:  *fields,
+			Indices: metricSet.Indices,
+		}
+		mc.lock.Unlock()
+		return info, true, nil
+	}
+
+	return provider.CustomMetricInfo{}, false, nil
+}
+
+// fieldExistsAsNumeric reports whether metricName exists as a numeric field in
+// the given index pattern, using a single-field _field_caps lookup.
+func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []string, metricName string, types []string) (bool, error) {
+	fields, err := fetchNumericFieldCaps(ctx, esClient, indices, []string{metricName}, types)
+	if err != nil {
+		return false, err
+	}
+	typesForField, ok := fields[metricName]
+	if !ok {
+		return false, nil
+	}
+	return hasNumericType(typesForField), nil
+}
+

@@ -1,0 +1,12 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+nodes:
+- role: control-plane
+  extraPortMappings:
+  # Exposes the mock Elasticsearch NodePort (30080) on the host so the e2e test
+  # driver can reach its /__control, /__requests and /__reset endpoints at
+  # http://localhost:30080 without port-forwarding.
+  - containerPort: 30080
+    hostPort: 30080
+    protocol: TCP

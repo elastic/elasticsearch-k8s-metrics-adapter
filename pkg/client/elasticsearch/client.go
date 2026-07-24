@@ -98,6 +98,11 @@ type MetricsClient struct {
 	// namer maintains an index of the metric aliases and their real names in the Elasticsearch cluster.
 	namer config.Namer
 
+	// typesFilterSupported caches whether the connected cluster accepts the
+	// _field_caps types= parameter (ES >= 8.2). nil until first detected;
+	// guarded by lock.
+	typesFilterSupported *bool
+
 	client dynamic.Interface
 	mapper apimeta.RESTMapper
 
@@ -139,6 +144,17 @@ func NewElasticsearchClient(
 	if err != nil {
 		return nil, err
 	}
+	namer, err := config.NewNamer(metricServerCfg.Rename)
+	if err != nil {
+		return nil, fmt.Errorf("%s: failed to create namer: %v", metricServerCfg.Name, err)
+	}
+	// Pre-register static (search-based) fields so they are served immediately,
+	// including in hpa discovery mode where discoverMetrics — which would
+	// otherwise record them — never runs for Elasticsearch clients.
+	rec := newRecorder(namer)
+	if err := recordStaticFields(metricServerCfg, rec); err != nil {
+		return nil, err
+	}
 	return &MetricsClient{
 		logger:          logger,
 		Client:          esClient,
@@ -146,6 +162,9 @@ func NewElasticsearchClient(
 		client:          client,
 		mapper:          mapper,
 		tracer:          tracer,
+		metrics:         rec.metrics,
+		indexedMetrics:  rec.indexedMetrics,
+		namer:           namer,
 	}, nil
 }
 

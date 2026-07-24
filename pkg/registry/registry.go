@@ -18,6 +18,7 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -33,24 +34,64 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/scheduler"
 )
 
-// Registry maintains a list of the available metrics and the associated metrics sources.
-// The aim of the registry is to cache the metrics lists as they can be expensive to retrieve and compute from
-// the various sources.
+// Registry is the central routing table of the adapter.
+//
+// It has two responsibilities:
+//
+//  1. Advertisement — it answers the Kubernetes custom metrics API's
+//     ListAllCustomMetrics / ListAllExternalMetrics calls.  The K8s API server
+//     uses these lists to build its own resource catalogue; a metric that is
+//     not listed here will get a 404 from the API server before the request
+//     ever reaches the adapter.
+//
+//  2. Routing — when an HPA requests the value of metric X, the registry
+//     returns the backend client (e.g. the Elasticsearch client) responsible
+//     for fetching it.
+//
+// Both responsibilities are served by the same map (customMetrics / externalMetrics):
+// the keys are what get listed; the values are the clients used for routing.
+//
+// Metrics are added to the registry in two ways:
+//   - Periodically, via UpdateCustomMetrics / UpdateExternalMetrics, called by
+//     the scheduler after each discovery cycle (used by custom_api clients).
+//   - Proactively, via Advertise, called by the HPA watcher when it sees a new
+//     metric referenced by an HPA (used by Elasticsearch clients in hpa mode).
 type Registry struct {
 	logger logr.Logger
 	lock   sync.RWMutex
 
+	// customMetrics is simultaneously the advertisement catalogue
+	// (ListAllCustomMetrics iterates it) and the routing table
+	// (GetCustomMetricClient looks up in it).
 	customMetrics   map[provider.CustomMetricInfo]*metricClients
 	externalMetrics map[provider.ExternalMetricInfo]*metricClients
+
+	// advertisedByName indexes metrics registered via Advertise by their plain
+	// metric name so they can be withdrawn by name when no HPA references them.
+	advertisedByName map[string]provider.CustomMetricInfo
+
+	// resolverClients are consulted in order by Advertise to find which client
+	// serves a metric name referenced by an HPA, performing the on-demand
+	// _field_caps lookup. Non-empty only in hpa discovery mode.
+	resolverClients []client.Interface
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		logger:          log.ForPackage("registry"),
-		lock:            sync.RWMutex{},
-		customMetrics:   make(map[provider.CustomMetricInfo]*metricClients),
-		externalMetrics: make(map[provider.ExternalMetricInfo]*metricClients),
+		logger:           log.ForPackage("registry"),
+		lock:             sync.RWMutex{},
+		customMetrics:    make(map[provider.CustomMetricInfo]*metricClients),
+		externalMetrics:  make(map[provider.ExternalMetricInfo]*metricClients),
+		advertisedByName: make(map[string]provider.CustomMetricInfo),
 	}
+}
+
+// WithResolverClients registers the clients consulted by Advertise to resolve a
+// metric name on demand (via _field_caps) when the HPA watcher discovers it.
+// Clients are tried in order; the first to report the metric as served wins.
+func (r *Registry) WithResolverClients(clients []client.Interface) *Registry {
+	r.resolverClients = clients
+	return r
 }
 
 // getCustomMetricsFrom builds a set of the custom metrics currently served by a client.
@@ -171,12 +212,14 @@ func getRemovedExternalMetrics(old map[provider.ExternalMetricInfo]struct{}, new
 	return outdated
 }
 
+// GetCustomMetricClient returns the backend client that can fetch the value of
+// the given custom metric. It is called on every HPA reconcile. Returns a 404
+// StatusError if the metric is not in the registry (i.e. was not advertised).
 func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client.Interface, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
-	var metricClients *metricClients
-	var ok bool
-	if metricClients, ok = r.customMetrics[info]; !ok {
+	metricClients, ok := r.customMetrics[info]
+	if !ok {
 		r.logger.V(1).Info("Custom metric is not served by any metric client", "metric_name", info.Metric)
 		return nil, &errors.StatusError{
 			ErrStatus: metav1.Status{
@@ -196,6 +239,77 @@ func (r *Registry) GetCustomMetricClient(info provider.CustomMetricInfo) (client
 		"client_host", metricClient.GetConfiguration().ClientConfig.Host,
 	)
 	return metricClient, nil
+}
+
+// registerResolved writes a successfully resolved metric into both the routing
+// table (customMetrics) and the name index (advertisedByName). Writing to
+// customMetrics is what makes the metric appear in ListAllCustomMetrics, which
+// is what the K8s API server needs before it will route requests for this metric
+// to the adapter.
+func (r *Registry) registerResolved(info provider.CustomMetricInfo, c client.Interface) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if _, exists := r.customMetrics[info]; !exists {
+		r.customMetrics[info] = newMetricClients()
+	}
+	r.customMetrics[info].addOrUpdateClient(c)
+	r.advertisedByName[info.Metric] = info
+}
+
+// Advertise resolves a metric by name — consulting each resolver client in turn
+// until one reports it served — and registers it so it is listed by
+// ListAllCustomMetrics and routed by GetCustomMetricClient. Used by HPA-driven
+// discovery to populate the registry before the first request for the metric
+// arrives.
+//
+// Advertise is called serially by the HPA watcher, once per newly-referenced
+// metric name (the watcher's reference tracker dedupes), so no per-name caching
+// or call coalescing is needed here.
+//
+// Returns true if the metric was resolved and advertised, false if no client
+// serves it. A non-nil error indicates a transient resolution failure; the
+// caller should retry rather than treat the metric as absent.
+func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, error) {
+	for _, c := range r.resolverClients {
+		info, found, err := c.ResolveCustomMetric(ctx, metricName)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			continue
+		}
+		r.registerResolved(info, c)
+		r.logger.V(1).Info(
+			"Custom metric advertised", "metric", info.String(),
+			"client_name", c.GetConfiguration().Name,
+		)
+		return true, nil
+	}
+	return false, nil
+}
+
+// Withdraw removes a previously advertised metric from the served set. It is a
+// no-op if the metric was not advertised. Used when no HPA references the
+// metric any more.
+//
+// Withdraw clears only the registry's routing/advertisement tables. It does not
+// clear the resolving client's own metric cache (e.g. the ES client's
+// metrics/indexedMetrics maps populated by ResolveCustomMetric). That is
+// deliberate: if the metric is referenced again, Advertise → ResolveCustomMetric
+// takes the fast path and re-registers it with no ES call. The trade-off is that
+// a re-advertised metric is served from the cached positive without re-validating
+// against Elasticsearch; the cache is bounded by the small set of distinct
+// HPA-referenced names, so this is not an unbounded-growth concern.
+func (r *Registry) Withdraw(metricName string) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	info, ok := r.advertisedByName[metricName]
+	if !ok {
+		return
+	}
+	delete(r.customMetrics, info)
+	delete(r.advertisedByName, metricName)
+	r.logger.V(1).Info("Custom metric withdrawn", "metric", metricName)
 }
 
 func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (client.Interface, error) {
@@ -224,6 +338,9 @@ func (r *Registry) GetExternalMetricClient(info provider.ExternalMetricInfo) (cl
 	return metricClient, nil
 }
 
+// ListAllCustomMetrics returns every metric currently in the registry.
+// The K8s API server polls this to build the list of routes it will forward to
+// the adapter; a metric absent from this list gets a 404 before reaching us.
 func (r *Registry) ListAllCustomMetrics() []provider.CustomMetricInfo {
 	r.lock.RLock()
 	defer r.lock.RUnlock()

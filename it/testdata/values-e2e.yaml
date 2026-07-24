@@ -1,0 +1,61 @@
+# Helm values for the e2e environment. Installs the adapter in hpa discovery
+# mode, pointed at the in-cluster mock Elasticsearch, with no external secret
+# dependency.
+
+image:
+  # Locally built and `kind load`-ed by the e2e-up target. Tag is not "latest",
+  # so the default imagePullPolicy resolves to IfNotPresent and the preloaded
+  # image is used (no registry pull).
+  repository: elasticsearch-k8s-metrics-adapter
+  tag: e2e
+
+# Verbose enough to see "Custom metric advertised/withdrawn" log lines.
+logVerbosity: "2"
+
+discoveryMode: hpa
+
+# No external secret / envFrom in e2e — credentials and host go straight into
+# the config below.
+envFrom: []
+
+# Keep the metadata keys the chart's templates reference defined (but empty) so
+# the rendered ExternalSecret is well-formed; it applies inertly against the
+# stub CRD and the pod does not depend on it.
+metadata:
+  cluster: ""
+  deploymentslice: ""
+  environment: ""
+  csp: ""
+  region: ""
+o11yUser: ""
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+config:
+  metricServers:
+    - name: mock-es
+      serverType: elasticsearch
+      clientConfig:
+        host: http://mock-elasticsearch.metrics-adapter.svc.cluster.local:9200
+        tls:
+          insecureSkipTLSVerify: true
+      metricSets:
+        # Numeric fields resolved on demand via _field_caps (scenarios 1, 2, 4).
+        - indices: ['metrics-*']
+        # A static, search-based field (scenario 7 / Issue B). It carries an
+        # explicit query body, so it is served via _search without any
+        # _field_caps probe. {{ .Metric }} is the adapter's query template (not
+        # Helm) and is expanded at query time.
+        - indices: ['metrics-*']
+          fields:
+            - name: prometheus.static_test.value
+              search:
+                metricPath: '.hits.hits[0]._source.prometheus.static_test.value'
+                timestampPath: '.hits.hits[0]._source["@timestamp"]'
+                body: |
+                  {"query":{"bool":{"must":[{"exists":{"field":"{{ .Metric }}"}}]}},"size":1}

@@ -28,3 +28,15 @@ rules:
     verbs:
       - get
       - list
+{{- if eq .Values.discoveryMode "hpa" }}
+  # Required by the HPA-driven discovery mode: the adapter watches
+  # HorizontalPodAutoscaler objects to learn which custom metrics to serve.
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - get
+      - list
+      - watch
+{{- end }}

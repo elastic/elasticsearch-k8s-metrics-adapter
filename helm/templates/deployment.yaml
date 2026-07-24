@@ -50,6 +50,7 @@ spec:
             "--cert-dir=/var/run/serving-cert",
             "--v", "{{ .Values.logVerbosity }}",
             "--profiling-port", "{{ .Values.profilingPort}}",
+            "--discovery-mode", "{{ .Values.discoveryMode }}",
           ]
           {{- with $.Values.resources }}
           resources:

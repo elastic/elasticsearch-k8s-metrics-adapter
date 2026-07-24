@@ -7,3 +7,6 @@ elasticsearch-k8s-metrics-adapter
 apiserver.local.config
 config/config.yml
 config/config.yaml
+
+# e2e: host-built mock Elasticsearch binary (packaged into the mockes image)
+it/mockes/mockes
