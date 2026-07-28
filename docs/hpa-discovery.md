@@ -406,8 +406,10 @@ a different name to Kubernetes. It works in `full` mode because
 for each one, building the alias → real-name map before any HPA query arrives.
 
 In `hpa` mode `discoverMetrics()` never runs, so the map is never populated.
-When `ResolveCustomMetric` receives the alias from the HPA it probes `_field_caps`
-with the alias name — which doesn't exist in Elasticsearch — and silently returns
-not-found. The metric is never advertised.
+When `ResolveCustomMetric` receives the alias from the HPA it would probe
+`_field_caps` with the alias name, which doesn't exist in Elasticsearch, and
+never advertise the metric. Rather than accept a config that cannot work, the
+adapter rejects an Elasticsearch server that sets `rename` at startup when
+`--discovery-mode=hpa`.
 
 If you rely on `rename`, use `--discovery-mode=full` for now.
