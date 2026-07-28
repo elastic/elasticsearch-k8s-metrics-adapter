@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/metrics/pkg/apis/custom_metrics"
 	"k8s.io/metrics/pkg/apis/external_metrics"
@@ -35,6 +36,17 @@ import (
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
+
+// customMetricInfo builds a CustomMetricInfo with the same field shape the
+// production Elasticsearch client populates (pods resource, namespaced), so the
+// registry key used in these tests matches the real routing key.
+func customMetricInfo(name string) provider.CustomMetricInfo {
+	return provider.CustomMetricInfo{
+		GroupResource: schema.GroupResource{Resource: "pods"},
+		Namespaced:    true,
+		Metric:        name,
+	}
+}
 
 // resolverFakeClient is a minimal client.Interface whose ResolveCustomMetric
 // outcome is controlled by the test. It counts calls so we can assert how often
@@ -84,7 +96,7 @@ var _ client.Interface = &resolverFakeClient{}
 func newResolverFakeClient(name string, known ...string) *resolverFakeClient {
 	m := make(map[string]provider.CustomMetricInfo, len(known))
 	for _, k := range known {
-		m[k] = provider.CustomMetricInfo{Metric: k}
+		m[k] = customMetricInfo(k)
 	}
 	return &resolverFakeClient{name: name, known: m}
 }
@@ -98,15 +110,15 @@ func TestRegistry_AdvertiseAndWithdraw(t *testing.T) {
 	assert.True(t, found)
 
 	// The metric is now listed and routable to the client that serves it.
-	assert.ElementsMatch(t, []provider.CustomMetricInfo{{Metric: "foo"}}, r.ListAllCustomMetrics())
-	got, err := r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "foo"})
+	assert.ElementsMatch(t, []provider.CustomMetricInfo{customMetricInfo("foo")}, r.ListAllCustomMetrics())
+	got, err := r.GetCustomMetricClient(customMetricInfo("foo"))
 	require.NoError(t, err)
 	assert.Equal(t, "c1", got.GetConfiguration().Name)
 
 	// Withdrawing removes it from both the listing and the routing table.
 	r.Withdraw("foo")
 	assert.Empty(t, r.ListAllCustomMetrics())
-	_, err = r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "foo"})
+	_, err = r.GetCustomMetricClient(customMetricInfo("foo"))
 	assert.Error(t, err)
 
 	// Withdrawing an unknown metric is a no-op.
@@ -114,7 +126,7 @@ func TestRegistry_AdvertiseAndWithdraw(t *testing.T) {
 }
 
 func TestRegistry_WithdrawKeepsOtherBackends(t *testing.T) {
-	info := provider.CustomMetricInfo{Metric: "foo"}
+	info := customMetricInfo("foo")
 
 	// A periodically-discovered backend (e.g. custom_api) already serves foo.
 	periodic := newResolverFakeClient("periodic", "foo")
@@ -168,7 +180,7 @@ func TestRegistry_AdvertiseTriesLaterClientAfterError(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 
-	got, err := r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "foo"})
+	got, err := r.GetCustomMetricClient(customMetricInfo("foo"))
 	require.NoError(t, err)
 	assert.Equal(t, "c2", got.GetConfiguration().Name)
 	assert.Equal(t, int64(1), atomic.LoadInt64(&c1.callCount))
@@ -184,7 +196,7 @@ func TestRegistry_AdvertiseFirstMatchingClientWins(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 
-	got, err := r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "foo"})
+	got, err := r.GetCustomMetricClient(customMetricInfo("foo"))
 	require.NoError(t, err)
 	assert.Equal(t, "c2", got.GetConfiguration().Name)
 	assert.Equal(t, int64(1), atomic.LoadInt64(&c1.callCount))
