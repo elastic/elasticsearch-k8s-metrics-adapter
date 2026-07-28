@@ -393,6 +393,11 @@ from that cached positive without re-validating against Elasticsearch. The cache
 is bounded by the small set of distinct HPA-referenced names, so this is not a
 growth concern.
 
+There is a correctness edge to it: if the underlying Elasticsearch field is
+deleted while no HPA references the metric, a later HPA re-referencing it will
+still be re-advertised from the cache, and value queries against it will fail
+until the adapter is restarted or the field reappears in Elasticsearch.
+
 ### `rename` is not supported in `hpa` mode
 
 The `rename` config directive (`matches` / `as`) lets you expose ES fields under
