@@ -108,6 +108,21 @@ func main() {
 		logErrorAndExit(err, "Unable to parse adapter configuration")
 	}
 
+	// hpa mode resolves metrics on demand via _field_caps keyed on the name the
+	// HPA references, but the rename alias map is only populated by the periodic
+	// discovery that hpa mode skips. An aliased metric would therefore never
+	// resolve, failing with a confusing "not found". Reject the combination
+	// rather than accept a config that cannot work.
+	if cmd.DiscoveryMode == discoveryModeHPA {
+		for _, s := range adapterCfg.MetricServers {
+			if s.ServerType == elastisearchMetricServerType && s.Rename != nil {
+				logErrorAndExit(
+					fmt.Errorf("metric server %q sets rename, which is not supported in hpa discovery mode", s.Name),
+					"Invalid configuration")
+			}
+		}
+	}
+
 	logger.Info("Starting monitoring server...")
 	monitoringServer := monitoring.NewServer(adapterCfg.MetricServers, cmd.MonitoringPort, adapterCfg.ReadinessProbe.FailureThreshold)
 	go monitoringServer.Start()
