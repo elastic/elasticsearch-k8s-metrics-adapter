@@ -278,14 +278,22 @@ func (r *Registry) registerResolved(info provider.CustomMetricInfo, c client.Int
 // metric name (the watcher's reference tracker dedupes), so no per-name caching
 // or call coalescing is needed here.
 //
+// Every resolver client is tried even if an earlier one errors, so a transient
+// failure on one backend does not shadow another that serves the metric.
 // Returns true if the metric was resolved and advertised, false if no client
-// serves it. A non-nil error indicates a transient resolution failure; the
-// caller should retry rather than treat the metric as absent.
+// serves it. A non-nil error (the last resolution error seen) is returned only
+// when no client resolved the metric; the caller should retry rather than treat
+// the metric as absent.
 func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, error) {
+	var lastErr error
 	for _, c := range r.resolverClients {
 		info, found, err := c.ResolveCustomMetric(ctx, metricName)
 		if err != nil {
-			return false, err
+			// A transiently-failing client must not shadow the others: a later
+			// client may still serve the metric. Remember the error and keep going,
+			// surfacing it only if no client resolves the metric.
+			lastErr = err
+			continue
 		}
 		if !found {
 			continue
@@ -297,7 +305,7 @@ func (r *Registry) Advertise(ctx context.Context, metricName string) (bool, erro
 		)
 		return true, nil
 	}
-	return false, nil
+	return false, lastErr
 }
 
 // Withdraw removes a previously advertised metric from the served set. It is a

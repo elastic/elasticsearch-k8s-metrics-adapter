@@ -157,6 +157,24 @@ func TestRegistry_AdvertiseTransientErrorIsReturned(t *testing.T) {
 	assert.Empty(t, r.ListAllCustomMetrics())
 }
 
+func TestRegistry_AdvertiseTriesLaterClientAfterError(t *testing.T) {
+	c1 := newResolverFakeClient("c1") // transiently failing
+	c1.err = errors.New("boom")
+	c2 := newResolverFakeClient("c2", "foo") // serves "foo"
+	r := NewRegistry().WithResolverClients([]client.Interface{c1, c2})
+
+	// c1's error must not prevent c2 from resolving the metric.
+	found, err := r.Advertise(context.Background(), "foo")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	got, err := r.GetCustomMetricClient(provider.CustomMetricInfo{Metric: "foo"})
+	require.NoError(t, err)
+	assert.Equal(t, "c2", got.GetConfiguration().Name)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&c1.callCount))
+	assert.Equal(t, int64(1), atomic.LoadInt64(&c2.callCount))
+}
+
 func TestRegistry_AdvertiseFirstMatchingClientWins(t *testing.T) {
 	c1 := newResolverFakeClient("c1")        // doesn't know "foo"
 	c2 := newResolverFakeClient("c2", "foo") // serves "foo"
