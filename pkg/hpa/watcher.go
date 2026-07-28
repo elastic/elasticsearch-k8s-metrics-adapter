@@ -54,6 +54,10 @@ type Watcher struct {
 	tracker  *referenceTracker
 	factory  informers.SharedInformerFactory
 	informer cache.SharedIndexInformer
+	// registration is the handle for the event handler added below. Its
+	// HasSynced reports true only once the initial AddFunc replay has been
+	// delivered, unlike informer.HasSynced which only tracks the store.
+	registration cache.ResourceEventHandlerRegistration
 	// resyncPeriod is how often the informer does a full relist; it also re-delivers
 	// every HPA, which drives the retry of any transiently-failed resolutions (see
 	// retryUnresolved).
@@ -81,21 +85,28 @@ func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncP
 		resyncPeriod: resyncPeriod,
 		unresolved:   make(map[string]struct{}),
 	}
-	_, _ = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	registration, _ := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    w.onUpsert,
 		UpdateFunc: func(_, newObj interface{}) { w.onUpsert(newObj) },
 		DeleteFunc: w.onDelete,
 	})
+	w.registration = registration
 	return w
 }
 
 // Start launches the informer and blocks until the cache has synced or the
 // context is cancelled. It returns once the initial list of HPAs has been
 // processed, so the caller can treat the registry as warm.
+//
+// It waits on the event handler's registration rather than informer.HasSynced:
+// the latter only reports that the store is populated, not that the initial
+// AddFunc events have been delivered and each metric advertised. Waiting on the
+// registration is what makes the cold-start guarantee real — the first scrape
+// after Start returns cannot 404 on an already-referenced metric.
 func (w *Watcher) Start(ctx context.Context) error {
 	w.logger.Info("Starting HPA watcher")
 	w.factory.Start(ctx.Done())
-	if !cache.WaitForCacheSync(ctx.Done(), w.informer.HasSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), w.registration.HasSynced) {
 		return fmt.Errorf("HPA watcher: informer cache failed to sync")
 	}
 	w.logger.Info("HPA watcher cache synced")

@@ -181,9 +181,11 @@ sequenceDiagram
     Note over Main,API: Registry already lists the HPA-referenced metrics,<br/>so the API server will route requests for them.
 ```
 
-The watcher's `Start` **blocks on cache sync** on purpose: by the time the API
-server begins serving, every metric referenced by an already-existing HPA is
-advertised, so the very first scrape is not a 404.
+The watcher's `Start` **blocks on the event handler's initial sync** on purpose
+(the handler registration's `HasSynced`, not just the informer store): by the
+time the API server begins serving, the initial `AddFunc` replay has run and
+every metric referenced by an already-existing HPA is advertised, so the very
+first scrape is not a 404.
 
 ## HPA event flow (sequence diagram)
 
