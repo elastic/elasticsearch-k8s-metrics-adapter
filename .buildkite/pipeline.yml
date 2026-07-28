@@ -77,7 +77,12 @@ steps:
       EXPECTED_SHA="$$(cut -d ' ' -f1 < "/tmp/$${HELM_TARBALL}.sha256sum")"
       echo "$${EXPECTED_SHA}  /tmp/$${HELM_TARBALL}" | sha256sum --check --strict -
       tar -xzf "/tmp/$${HELM_TARBALL}" -C /tmp
-      install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+      # /usr/local/bin/helm is preinstalled and root-owned on the tooling image,
+      # so it cannot be replaced without sudo. Install our pinned helm into an
+      # agent-owned dir and put it first on PATH so it wins the lookup.
+      mkdir -p /tmp/e2e-bin
+      install -m 0755 /tmp/linux-amd64/helm /tmp/e2e-bin/helm
+      export PATH=/tmp/e2e-bin:$$PATH
       make e2e-up
       make e2e
     artifact_paths:
