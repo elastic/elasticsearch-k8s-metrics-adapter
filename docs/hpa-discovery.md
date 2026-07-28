@@ -201,7 +201,7 @@ sequenceDiagram
     participant ESsrv as Elasticsearch
 
     Inf->>W: onUpsert(hpa) on Add, Update or resync
-    W->>W: metricNames(hpa), Pods and Object metrics only
+    W->>W: metricNames(hpa), Pods metrics only
     W->>T: upsert(key, names)
     T-->>W: added and removed names
     loop name in added
