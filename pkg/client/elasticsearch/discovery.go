@@ -365,7 +365,11 @@ func recordStaticFields(cfg config.MetricServer, rec *recorder) error {
 					Resource: "pods",
 				},
 				Namespaced: true,
-				Metric:     field.Name,
+				// Register with the namer like discovered fields do, so the exposed
+				// Metric is the alias and query-time namer.Get resolves it back to the
+				// field name. Without this, a static field under a rename config would
+				// fail Get with "alias not found".
+				Metric: rec.namer.Register(field.Name),
 			}
 		}
 	}
@@ -442,4 +446,3 @@ func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []
 	}
 	return hasNumericType(typesForField), nil
 }
-

@@ -189,3 +189,44 @@ func TestClusterSupportsFieldCapsTypes(t *testing.T) {
 		})
 	}
 }
+
+func Test_recordStaticFields_registersAliasWithNamer(t *testing.T) {
+	cfg, err := config.From([]byte(`
+metricServers:
+  - name: es
+    serverType: elasticsearch
+    rename:
+      matches: "^(.*)$"
+      as: "${1}@es"
+    metricSets:
+      - indices: [ 'metrics-*' ]
+        fields:
+          - name: my_static_field
+            search:
+              metricPath: ".value"
+              timestampPath: ".timestamp"
+              body: "{}"
+`))
+	require.NoError(t, err)
+
+	server := cfg.MetricServers[0]
+	namer, err := config.NewNamer(server.Rename)
+	require.NoError(t, err)
+	rec := newRecorder(namer)
+
+	require.NoError(t, recordStaticFields(server, rec))
+
+	// The exposed metric name is the alias, and the namer resolves it back to the
+	// field name; the metadata map is keyed by the field name. Without namer
+	// registration, the query-time namer.Get(alias) would fail.
+	info, ok := rec.metrics["my_static_field"]
+	require.True(t, ok)
+	assert.Equal(t, "my_static_field@es", info.Metric)
+
+	original, ok := namer.Get(info.Metric)
+	require.True(t, ok)
+	assert.Equal(t, "my_static_field", original)
+
+	_, ok = rec.indexedMetrics["my_static_field"]
+	assert.True(t, ok)
+}
