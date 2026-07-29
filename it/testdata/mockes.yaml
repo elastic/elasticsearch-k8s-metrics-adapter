@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-elasticsearch
+  namespace: metrics-adapter
+  labels:
+    app: mock-elasticsearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-elasticsearch
+  template:
+    metadata:
+      labels:
+        app: mock-elasticsearch
+    spec:
+      containers:
+        - name: mockes
+          image: mockes:e2e
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9200
+              name: http
+          env:
+            # Fields the mock reports as numeric (and serves values for). Tests
+            # can override the set at runtime via POST /__control {"setKnown":[...]}.
+            - name: MOCKES_KNOWN_FIELDS
+              value: "prometheus.proxy_open_connections.value"
+          readinessProbe:
+            httpGet:
+              port: http
+              path: /
+          livenessProbe:
+            httpGet:
+              port: http
+              path: /
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-elasticsearch
+  namespace: metrics-adapter
+  labels:
+    app: mock-elasticsearch
+spec:
+  type: NodePort
+  selector:
+    app: mock-elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+      # Mapped to the host (localhost:30080) by it/kind-config.yaml so the test
+      # driver can reach the control/inspection endpoints.
+      nodePort: 30080

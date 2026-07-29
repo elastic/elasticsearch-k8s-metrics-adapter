@@ -18,6 +18,7 @@
 package registry
 
 import (
+	"context"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -68,6 +69,15 @@ func (fmc *fakeMetricsClient) GetExternalMetric(string, string, labels.Selector)
 
 func (fmc *fakeMetricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]struct{}, error) {
 	return fmc.customMetrics, nil
+}
+
+func (fmc *fakeMetricsClient) ResolveCustomMetric(_ context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
+	for info := range fmc.customMetrics {
+		if info.Metric == metricName {
+			return info, true, nil
+		}
+	}
+	return provider.CustomMetricInfo{}, false, nil
 }
 
 func (fmc *fakeMetricsClient) ListExternalMetrics() (map[provider.ExternalMetricInfo]struct{}, error) {

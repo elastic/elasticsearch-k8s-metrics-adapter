@@ -94,3 +94,48 @@ docker-multiarch-build: generated/openapi/zz_generated.openapi.go generate-notic
 .PHONY: validate-helm
 validate-helm:
 	helm lint helm && helm template helm
+
+##@ E2E (kind)
+E2E_CLUSTER ?= elasticsearch-adapter-e2e
+E2E_CONTEXT := kind-$(E2E_CLUSTER)
+E2E_ARCH    ?= $(shell go env GOARCH)
+E2E_ADAPTER_IMAGE := elasticsearch-k8s-metrics-adapter:e2e
+E2E_MOCKES_IMAGE  := mockes:e2e
+
+.PHONY: e2e-adapter-image e2e-mockes-image e2e-up e2e e2e-down
+
+# Build the adapter image for e2e from the committed sources (no notice/openapi
+# regeneration); reuses the production Dockerfile.
+e2e-adapter-image: generated/openapi/zz_generated.openapi.go
+	docker build . \
+		--build-arg VERSION=e2e \
+		--build-arg SOURCE_COMMIT='$(SHA1)' \
+		-t $(E2E_ADAPTER_IMAGE)
+
+# Build the mock Elasticsearch: compile the (stdlib-only) binary on the host for
+# the cluster arch, then package it into a scratch image.
+e2e-mockes-image:
+	cd it/mockes && CGO_ENABLED=0 GOOS=linux GOARCH=$(E2E_ARCH) go build -o mockes .
+	docker build -t $(E2E_MOCKES_IMAGE) it/mockes
+
+# Provision the full e2e environment: kind cluster, images, mock ES, the
+# pre-existing HPA (scenario 1), and the adapter in hpa mode.
+e2e-up: e2e-adapter-image e2e-mockes-image
+	kind create cluster --name $(E2E_CLUSTER) --config it/kind-config.yaml
+	kind load docker-image $(E2E_ADAPTER_IMAGE) --name $(E2E_CLUSTER)
+	kind load docker-image $(E2E_MOCKES_IMAGE) --name $(E2E_CLUSTER)
+	kubectl --context $(E2E_CONTEXT) apply -f it/testdata/externalsecret-crd-stub.yaml
+	kubectl --context $(E2E_CONTEXT) create namespace metrics-adapter
+	kubectl --context $(E2E_CONTEXT) apply -f it/testdata/mockes.yaml
+	kubectl --context $(E2E_CONTEXT) wait --for=condition=available --timeout=120s \
+		-n metrics-adapter deployment/mock-elasticsearch
+	kubectl --context $(E2E_CONTEXT) apply -f it/testdata/hpa-startup.yaml
+	helm --kube-context $(E2E_CONTEXT) install metrics-adapter ./helm \
+		-n metrics-adapter -f it/testdata/values-e2e.yaml
+
+# Run the e2e suite against the provisioned cluster.
+e2e:
+	go test -tags e2e -count=1 -v -timeout 10m ./it/e2e/...
+
+e2e-down:
+	kind delete cluster --name $(E2E_CLUSTER)
