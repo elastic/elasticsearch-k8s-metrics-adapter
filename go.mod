@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.27.0
 
 require (
-	github.com/KimMachineGun/automemlimit v0.7.5
+	github.com/KimMachineGun/automemlimit v1.0.0
 	github.com/elastic/go-elasticsearch/v9 v9.5.1
 	github.com/go-logr/logr v1.4.4
 	github.com/go-logr/zapr v1.3.0
