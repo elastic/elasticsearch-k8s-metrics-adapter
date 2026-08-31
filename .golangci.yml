@@ -1,0 +1,4 @@
+# Baseline golangci-lint configuration (AI Dev Tooling foundations).
+# Default linter set only — wire into CI / extend at the team's pace.
+run:
+  timeout: 5m
