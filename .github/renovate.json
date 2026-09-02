@@ -99,6 +99,25 @@
         "github.com/golangci/golangci-lint"
       ],
       "groupName": "go"
+    },
+    {
+      "description": "TEMPORARY: hold the Kubernetes staging modules at 1.36 until sigs.k8s.io/custom-metrics-apiserver has a 1.37 compatible release. Its generated openapi references v1.PodStatusResult, which k8s.io/api removed in v0.37.0, so bumping these modules fails the build with \"undefined: v1.PodStatusResult\". Upstream master is still on v0.36.4 and the bump is pending in kubernetes-sigs/custom-metrics-apiserver#250. Held via dependencyDashboardApproval rather than allowedVersions on purpose: the update stays listed under Pending Approval on the Dependency Dashboard, so the hold stays visible instead of silently filtering the upgrade out forever. Approving it will produce a red PR until upstream ships, which is the signal to bump custom-metrics-apiserver in the same PR and then delete this rule. Scoped to minor and major so 0.36.x patch updates keep flowing normally, and grouped separately so the hold does not block the ungrouped group, which also carries unrelated updates such as the wolfi base image digest. Only modules that track the Kubernetes minor version are listed; k8s.io/klog, k8s.io/utils, k8s.io/kube-openapi and k8s.io/gengo are versioned independently.",
+      "groupName": "kubernetes",
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "matchPackageNames": [
+        "k8s.io/api",
+        "k8s.io/apimachinery",
+        "k8s.io/apiserver",
+        "k8s.io/client-go",
+        "k8s.io/component-base",
+        "k8s.io/kms",
+        "k8s.io/metrics",
+        "k8s.io/streaming"
+      ],
+      "dependencyDashboardApproval": true
     }
   ],
   "automergeStrategy": "squash",
