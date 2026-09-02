@@ -99,6 +99,20 @@
         "github.com/golangci/golangci-lint"
       ],
       "groupName": "go"
+    },
+    {
+      "description": "TEMPORARY: hold the Kubernetes staging modules at 1.36 until sigs.k8s.io/custom-metrics-apiserver has a 1.37 compatible release. Its generated openapi references v1.PodStatusResult, which k8s.io/api removed in v0.37.0, so bumping these modules fails the build with \"undefined: v1.PodStatusResult\". Upstream master is still on v0.36.4 and the bump is pending in kubernetes-sigs/custom-metrics-apiserver#250. Without this hold the whole \"all ungrouped dependencies\" group stays red, which also blocks unrelated updates such as the wolfi base image digest. Remove this rule once a custom-metrics-apiserver release supports v0.37.0, and bump it in the same PR as these modules. Only modules that track the Kubernetes minor version are listed; k8s.io/klog, k8s.io/utils, k8s.io/kube-openapi and k8s.io/gengo are versioned independently and must keep updating.",
+      "matchPackageNames": [
+        "k8s.io/api",
+        "k8s.io/apimachinery",
+        "k8s.io/apiserver",
+        "k8s.io/client-go",
+        "k8s.io/component-base",
+        "k8s.io/kms",
+        "k8s.io/metrics",
+        "k8s.io/streaming"
+      ],
+      "allowedVersions": "<0.37.0"
     }
   ],
   "automergeStrategy": "squash",
