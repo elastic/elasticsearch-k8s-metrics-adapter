@@ -104,8 +104,9 @@ E2E_MOCKES_IMAGE  := mockes:e2e
 
 .PHONY: e2e-adapter-image e2e-mockes-image e2e-up e2e e2e-down
 
-# Build the adapter image for e2e from the committed sources (no notice/openapi
-# regeneration); reuses the production Dockerfile.
+# Build the adapter image for e2e from the committed sources (openapi is
+# regenerated when stale, the NOTICE step is skipped); reuses the production
+# Dockerfile.
 e2e-adapter-image: generated/openapi/zz_generated.openapi.go
 	docker build . \
 		--build-arg VERSION=e2e \

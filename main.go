@@ -250,7 +250,10 @@ func (a *ElasticsearchAdapter) startHPAWatcher(metricsRegistry *registry.Registr
 	if err != nil {
 		logErrorAndExit(err, "Unable to construct Kubernetes clientset for HPA watcher")
 	}
-	watcher := hpa.NewWatcher(clientset, metricsRegistry, hpaWatcherResyncPeriod)
+	watcher, err := hpa.NewWatcher(clientset, metricsRegistry, hpaWatcherResyncPeriod)
+	if err != nil {
+		logErrorAndExit(err, "Unable to create HPA watcher")
+	}
 	if err := watcher.Start(context.Background(), hpaWatcherSyncTimeout); err != nil {
 		logErrorAndExit(err, "HPA watcher failed to start")
 	}

@@ -119,6 +119,13 @@ func newHPA(namespace, name string, metrics ...string) *autoscalingv2.Horizontal
 	}
 }
 
+func mustNewWatcher(t *testing.T, clientset *fake.Clientset, reg MetricRegistry) *Watcher {
+	t.Helper()
+	w, err := NewWatcher(clientset, reg, 0)
+	require.NoError(t, err)
+	return w
+}
+
 func eventually(t *testing.T, cond func() bool) {
 	t.Helper()
 	assert.Eventually(t, cond, 2*time.Second, 10*time.Millisecond)
@@ -129,7 +136,7 @@ func TestWatcher_AdvertisesExistingHPAsOnStart(t *testing.T) {
 		newHPA("ns1", "hpa1", "prometheus.proxy_open_connections.value"),
 	)
 	reg := newFakeRegistry()
-	w := NewWatcher(clientset, reg, 0)
+	w := mustNewWatcher(t, clientset, reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -143,7 +150,7 @@ func TestWatcher_AdvertisesExistingHPAsOnStart(t *testing.T) {
 func TestWatcher_AdvertisesOnHPACreate(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	reg := newFakeRegistry()
-	w := NewWatcher(clientset, reg, 0)
+	w := mustNewWatcher(t, clientset, reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -162,7 +169,7 @@ func TestWatcher_RetriesTransientAdvertiseFailure(t *testing.T) {
 	// Fail the first two attempts: the initial advertise on cache sync and the
 	// immediate same-event retry, so the metric stays unresolved across events.
 	reg.failTimes = 2
-	w := NewWatcher(clientset, reg, 0)
+	w := mustNewWatcher(t, clientset, reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -185,7 +192,7 @@ func TestWatcher_RetriesTransientAdvertiseFailure(t *testing.T) {
 func TestWatcher_WithdrawsOnHPADelete(t *testing.T) {
 	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
 	reg := newFakeRegistry()
-	w := NewWatcher(clientset, reg, 0)
+	w := mustNewWatcher(t, clientset, reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -206,7 +213,7 @@ func TestWatcher_RetriesNotFoundWhenFieldAppearsLater(t *testing.T) {
 	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
 	reg := newFakeRegistry()
 	reg.setNotServed("foo", true)
-	w := NewWatcher(clientset, reg, 0)
+	w := mustNewWatcher(t, clientset, reg)
 	w.notFoundRetryInterval = 0 // retry on the very next event
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -233,7 +240,7 @@ func TestWatcher_NotFoundRetryIsRateLimited(t *testing.T) {
 	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
 	reg := newFakeRegistry()
 	reg.setNotServed("foo", true)
-	w := NewWatcher(clientset, reg, 0)
+	w := mustNewWatcher(t, clientset, reg)
 	w.notFoundRetryInterval = time.Hour
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -261,7 +268,7 @@ func TestWatcher_StartFailsWhenInformerCannotSync(t *testing.T) {
 		func(k8stesting.Action) (bool, runtime.Object, error) {
 			return true, nil, errors.New("horizontalpodautoscalers is forbidden")
 		})
-	w := NewWatcher(clientset, newFakeRegistry(), 0)
+	w := mustNewWatcher(t, clientset, newFakeRegistry())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -277,7 +284,7 @@ func TestWatcher_StartContinuesWhenReplayIsSlow(t *testing.T) {
 	reg := newFakeRegistry()
 	release := make(chan struct{})
 	reg.block = release
-	w := NewWatcher(clientset, reg, 0)
+	w := mustNewWatcher(t, clientset, reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -84,7 +84,7 @@ type Watcher struct {
 const defaultNotFoundRetryInterval = time.Minute
 
 // NewWatcher builds a Watcher over the given clientset.
-func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncPeriod time.Duration) *Watcher {
+func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncPeriod time.Duration) (*Watcher, error) {
 	factory := informers.NewSharedInformerFactory(clientset, resyncPeriod)
 	informer := factory.Autoscaling().V2().HorizontalPodAutoscalers().Informer()
 	w := &Watcher{
@@ -98,13 +98,18 @@ func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncP
 
 		notFoundRetryInterval: defaultNotFoundRetryInterval,
 	}
-	registration, _ := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	registration, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    w.onUpsert,
 		UpdateFunc: func(_, newObj interface{}) { w.onUpsert(newObj) },
 		DeleteFunc: w.onDelete,
 	})
+	if err != nil {
+		// Only fails once the informer has stopped, which cannot happen here,
+		// but a nil registration would otherwise panic in Start.
+		return nil, fmt.Errorf("HPA watcher: register event handler: %w", err)
+	}
 	w.registration = registration
-	return w
+	return w, nil
 }
 
 // Start launches the informer and blocks until the initial list of HPAs has
