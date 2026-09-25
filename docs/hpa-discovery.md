@@ -344,6 +344,7 @@ stateDiagram-v2
 | Static (search) fields | recorded each discovery cycle | seeded once at client construction |
 | Memory profile | high, grows with index size | low, bounded by HPA count |
 | RBAC | — | `get`/`list`/`watch` on `horizontalpodautoscalers` |
+| `/readyz` and ES health | 503 after `failureThreshold` failed scans | not affected by ES health (see limitations) |
 
 In `hpa` mode, **only Elasticsearch clients** take the resolver path; other
 client types (e.g. custom-api) keep going through the periodic scheduler because
@@ -422,6 +423,22 @@ There is a correctness edge to it: if the underlying Elasticsearch field is
 deleted while no HPA references the metric, a later HPA re-referencing it will
 still be re-advertised from the cache, and value queries against it will fail
 until the adapter is restarted or the field reappears in Elasticsearch.
+
+### `/readyz` no longer reflects Elasticsearch health
+
+In `full` mode every failed discovery scan increments the client's failure
+counter, and `readinessProbe.failureThreshold` consecutive failures turn
+`/readyz` into 503, which takes the pod out of the Service endpoints. In `hpa`
+mode the Elasticsearch client is not polled by the scheduler: its readiness
+counters are seeded once at startup and nothing increments a failure
+afterwards. `/readyz` therefore stays 200 through an Elasticsearch outage, and
+`readinessProbe.failureThreshold` has no effect on Elasticsearch clients.
+Failed resolutions are logged and retried (see the event flow above); value
+queries fail individually while Elasticsearch is down. The
+`client_errors_total` / `client_success_total` Prometheus counters are not
+incremented for Elasticsearch clients in `hpa` mode either. If you rely on the
+readiness signal to detect an Elasticsearch outage, watch the HPAs'
+`ScalingActive` condition (`FailedGetPodsMetric`) or use `full` mode.
 
 ### `rename` is not supported in `hpa` mode
 
