@@ -61,7 +61,10 @@ const fieldCapsResponse = `{
     "system.cpu.total.pct":            {"scaled_float":{"type":"scaled_float","metadata_field":false,"searchable":true,"aggregatable":true}},
     "system.cpu.user.norm.pct":        {"scaled_float":{"type":"scaled_float","metadata_field":false,"searchable":true,"aggregatable":true}},
     "system.cpu.user.pct":             {"scaled_float":{"type":"scaled_float","metadata_field":false,"searchable":true,"aggregatable":true}},
-    "some.keyword.field":              {"keyword":{"type":"keyword","metadata_field":false,"searchable":true,"aggregatable":true}}
+    "some.keyword.field":              {"keyword":{"type":"keyword","metadata_field":false,"searchable":true,"aggregatable":true}},
+    "_seq_no":                         {"long":   {"type":"long",   "metadata_field":true, "searchable":true,"aggregatable":true}},
+    "_doc_count":                      {"long":   {"type":"long",   "metadata_field":true, "searchable":false,"aggregatable":false}},
+    "_index":                          {"_index": {"type":"_index", "metadata_field":true, "searchable":true,"aggregatable":true}}
   }
 }`
 
@@ -125,7 +128,9 @@ metricServers:
 		"system.cpu.total.pct",
 		"system.cpu.user.norm.pct",
 		"system.cpu.user.pct",
-		// "some.keyword.field" is absent: keyword is not a numeric type
+		// "some.keyword.field" is absent: keyword is not a numeric type.
+		// "_seq_no", "_doc_count" and "_index" are absent: metadata fields are
+		// never metrics, even when their type is numeric.
 	}
 	assert.Empty(t, cmp.Diff(want, got))
 }

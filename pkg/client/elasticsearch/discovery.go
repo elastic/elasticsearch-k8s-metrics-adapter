@@ -60,10 +60,11 @@ func isTypeAllowed(t string) bool {
 }
 
 // fieldTypes is the per-field slice of a _field_caps response: a map from ES
-// type name to that type's capabilities. Only the type name matters to us, so
-// the value struct carries just "type".
+// type name to that type's capabilities. Only the type name and the metadata
+// flag matter to us, so the value struct carries just those.
 type fieldTypes = map[string]struct {
-	Type string `json:"type"`
+	Type          string `json:"type"`
+	MetadataField bool   `json:"metadata_field"`
 }
 
 // fieldCaps maps a field name to its fieldTypes. It is the shape decoded from
@@ -224,8 +225,16 @@ func fetchNumericFieldCaps(ctx context.Context, esClient *esv8.Client, indices, 
 // one type the adapter is willing to expose. _field_caps is already filtered
 // server-side via Types, but we re-check client-side so correctness does not
 // depend on that filter being honored.
+//
+// Metadata fields are excluded. _field_caps?fields=* lists them alongside
+// mapped fields, and some are numeric (_seq_no and _doc_count are long), but
+// they are not metrics. The former _mapping walk only descended "properties"
+// and never saw them, so skipping them keeps the advertised set unchanged.
 func hasNumericType(types fieldTypes) bool {
-	for t := range types {
+	for t, caps := range types {
+		if caps.MetadataField {
+			continue
+		}
 		if isTypeAllowed(t) {
 			return true
 		}
