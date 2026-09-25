@@ -41,6 +41,8 @@ type fakeRegistry struct {
 	// failTimes is the number of initial advertise attempts that return a
 	// transient error before succeeding.
 	failTimes int
+	// notServed holds metric names Advertise reports as not found (no error).
+	notServed map[string]bool
 }
 
 func newFakeRegistry() *fakeRegistry {
@@ -58,6 +60,9 @@ func (f *fakeRegistry) Advertise(_ context.Context, metricName string) (bool, er
 	if f.failTimes > 0 {
 		f.failTimes--
 		return false, errors.New("transient resolve failure")
+	}
+	if f.notServed[metricName] {
+		return false, nil
 	}
 	f.advertised[metricName]++
 	return true, nil
@@ -85,6 +90,15 @@ func (f *fakeRegistry) attemptCount(name string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.attempts[name]
+}
+
+func (f *fakeRegistry) setNotServed(name string, notServed bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.notServed == nil {
+		f.notServed = make(map[string]bool)
+	}
+	f.notServed[name] = notServed
 }
 
 func newHPA(namespace, name string, metrics ...string) *autoscalingv2.HorizontalPodAutoscaler {
@@ -176,4 +190,58 @@ func TestWatcher_WithdrawsOnHPADelete(t *testing.T) {
 		Delete(ctx, "hpa1", metav1.DeleteOptions{}))
 
 	eventually(t, func() bool { return reg.withdrawCount("foo") == 1 })
+}
+
+// A metric that Elasticsearch does not serve yet (e.g. the HPA was applied
+// before the first document created the field) must be re-probed on later HPA
+// events, not dropped after the first miss.
+func TestWatcher_RetriesNotFoundWhenFieldAppearsLater(t *testing.T) {
+	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
+	reg := newFakeRegistry()
+	reg.setNotServed("foo", true)
+	w := NewWatcher(clientset, reg, 0)
+	w.notFoundRetryInterval = 0 // retry on the very next event
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	eventually(t, func() bool { return reg.attemptCount("foo") >= 1 })
+	assert.Equal(t, 0, reg.advertiseCount("foo"))
+
+	// The field appears in Elasticsearch; the next HPA event must advertise it.
+	reg.setNotServed("foo", false)
+	hpa := newHPA("ns1", "hpa1", "foo")
+	hpa.Annotations = map[string]string{"bump": "1"}
+	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers("ns1").
+		Update(ctx, hpa, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	eventually(t, func() bool { return reg.advertiseCount("foo") == 1 })
+}
+
+// A not-found metric is re-probed no more often than notFoundRetryInterval, so
+// a permanently unknown name does not cost one resolve per HPA status update.
+func TestWatcher_NotFoundRetryIsRateLimited(t *testing.T) {
+	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
+	reg := newFakeRegistry()
+	reg.setNotServed("foo", true)
+	w := NewWatcher(clientset, reg, 0)
+	w.notFoundRetryInterval = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+	eventually(t, func() bool { return reg.attemptCount("foo") == 1 })
+
+	for i := range 3 {
+		hpa := newHPA("ns1", "hpa1", "foo")
+		hpa.Annotations = map[string]string{"bump": string(rune('a' + i))}
+		_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers("ns1").
+			Update(ctx, hpa, metav1.UpdateOptions{})
+		require.NoError(t, err)
+	}
+	// Give the events time to be delivered; none may re-probe within the interval.
+	time.Sleep(200 * time.Millisecond)
+	assert.Equal(t, 1, reg.attemptCount("foo"))
 }

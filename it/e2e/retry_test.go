@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // A metric whose first resolution fails transiently is not dropped — it stays
@@ -53,4 +54,34 @@ func TestTransientFailureIsRetried(t *testing.T) {
 	eventually(t, 60*time.Second, func() bool { return isAdvertised(ctx, t, metric) })
 	assert.GreaterOrEqual(t, fieldCapsAttempts(t, metric), 2,
 		"expected a second _field_caps probe (the retry) after the transient failure")
+}
+
+// The HPA is applied before the field exists in Elasticsearch, as happens when
+// an HPA and the workload it scales are rolled out together and the first
+// metric document (which creates the field under dynamic mapping) arrives
+// later. The first probe finds nothing; once the field appears, a later HPA
+// event must advertise the metric without an adapter restart.
+func TestNotFoundIsRetriedWhenFieldAppears(t *testing.T) {
+	ctx := context.Background()
+	const metric = "prometheus.test_late_field.value"
+
+	mockReset(t)
+	createPodsHPA(ctx, t, "default", "late-field", metric)
+
+	// The first probe happens and comes back empty: nothing is advertised.
+	eventually(t, 30*time.Second, func() bool { return fieldCapsAttempts(t, metric) >= 1 })
+	consistently(t, 3*time.Second, func() bool { return !isAdvertised(ctx, t, metric) })
+
+	// The field appears. Not-found names are re-probed at most once per
+	// notFoundRetryInterval (1 min) on an HPA event, so keep bumping the HPA
+	// until the retry window has passed and the metric is picked up.
+	mockAddKnown(t, metric)
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) && !isAdvertised(ctx, t, metric) {
+		bumpHPA(ctx, t, "default", "late-field")
+		time.Sleep(5 * time.Second)
+	}
+	require.True(t, isAdvertised(ctx, t, metric), "metric must be advertised once the field appears in Elasticsearch")
+	assert.GreaterOrEqual(t, fieldCapsAttempts(t, metric), 2,
+		"expected a second _field_caps probe after the not-found answer")
 }

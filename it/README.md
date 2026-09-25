@@ -68,6 +68,7 @@ is exercised deterministically.
 | `TestValueQueryShape` | value fetch filters by field + namespace + pod |
 | `TestStaticSearchFieldServed` | static search field served without `_field_caps` |
 | `TestTransientFailureIsRetried` | transiently-failed resolve is retried |
+| `TestNotFoundIsRetriedWhenFieldAppears` | HPA created before the field exists → advertised once it appears |
 
 ## Notes
 

@@ -66,11 +66,22 @@ type Watcher struct {
 	// mu guards unresolved.
 	mu sync.Mutex
 	// unresolved holds the names of metrics that are referenced by at least one
-	// HPA but whose Advertise call failed transiently. They are retried on every
-	// subsequent HPA event (including the periodic resync). In steady state this
-	// set is empty.
-	unresolved map[string]struct{}
+	// HPA but are not advertised yet, mapped to the earliest time they may be
+	// re-attempted. A transient Advertise error is retried on the next HPA event
+	// (including the periodic resync). A "not found" answer is retried too, no
+	// more often than notFoundRetryInterval: the field may appear later (dynamic
+	// mapping on the first document, a new backing index), and the tracker
+	// reports a name as added only once, so nothing else would re-probe it. In
+	// steady state this set is empty.
+	unresolved map[string]time.Time
+	// notFoundRetryInterval bounds how often a not-found metric is re-probed,
+	// so a name that stays unknown does not cost one _field_caps per HPA event
+	// (the HPA controller updates each HPA's status every ~15s).
+	notFoundRetryInterval time.Duration
 }
+
+// defaultNotFoundRetryInterval is the default Watcher.notFoundRetryInterval.
+const defaultNotFoundRetryInterval = time.Minute
 
 // NewWatcher builds a Watcher over the given clientset.
 func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncPeriod time.Duration) *Watcher {
@@ -83,7 +94,9 @@ func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncP
 		factory:      factory,
 		informer:     informer,
 		resyncPeriod: resyncPeriod,
-		unresolved:   make(map[string]struct{}),
+		unresolved:   make(map[string]time.Time),
+
+		notFoundRetryInterval: defaultNotFoundRetryInterval,
 	}
 	registration, _ := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    w.onUpsert,
@@ -128,8 +141,8 @@ func (w *Watcher) onUpsert(obj interface{}) {
 	added, removed := w.tracker.upsert(key, names)
 	w.advertise(added)
 	w.withdraw(removed)
-	// The tracker reports each name as "added" only once, so a transient
-	// Advertise failure above would otherwise never be retried. Re-attempt any
+	// The tracker reports each name as "added" only once, so a failed or
+	// not-found Advertise above would otherwise never be retried. Re-attempt any
 	// still-unresolved names now; HPA status updates and the informer's periodic
 	// resync re-deliver the object, so this provides the retry tick.
 	w.retryUnresolved()
@@ -159,8 +172,8 @@ func (w *Watcher) advertise(names []string) {
 }
 
 // advertiseOne resolves and advertises a single metric. On a transient failure
-// it records the name in the unresolved set so it is retried on a later HPA
-// event; on success or a definitive "not served" answer it clears the name.
+// or a "not found" answer it records the name in the unresolved set so it is
+// retried on a later HPA event; on success it clears the name.
 func (w *Watcher) advertiseOne(name string) {
 	// This resolve runs synchronously on the informer's handler goroutine, so a
 	// burst of newly-referenced metrics is processed one at a time and other HPA
@@ -174,50 +187,71 @@ func (w *Watcher) advertiseOne(name string) {
 	switch {
 	case err != nil:
 		w.logger.Error(err, "Failed to advertise metric referenced by an HPA; will retry", "metric", name)
-		w.setUnresolved(name, true)
+		w.markUnresolved(name, time.Now())
 	case !found:
+		// Not served *now*. With dynamic mappings the field only exists once the
+		// first document is indexed, and an HPA is often applied together with the
+		// workload it scales, before that workload produces data. Keep probing at a
+		// bounded rate so the metric is advertised once the field appears. Log the
+		// first miss at Info and the retries at V(1) to keep a permanently
+		// misnamed metric from flooding the log.
+		//
 		// Advertise only consults the registry's resolver clients (the
 		// Elasticsearch clients). A metric served by another backend via periodic
 		// discovery is invisible here, so scope the message to what was checked.
-		w.logger.Info("HPA references a metric not found in any Elasticsearch metric set", "metric", name)
-		w.setUnresolved(name, false)
+		first := w.markUnresolved(name, time.Now().Add(w.notFoundRetryInterval))
+		msg := "HPA references a metric not found in any Elasticsearch metric set; will retry"
+		if first {
+			w.logger.Info(msg, "metric", name, "retry_after", w.notFoundRetryInterval)
+		} else {
+			w.logger.V(1).Info(msg, "metric", name, "retry_after", w.notFoundRetryInterval)
+		}
 	default:
 		w.logger.Info("Advertised metric referenced by an HPA", "metric", name)
-		w.setUnresolved(name, false)
+		w.clearUnresolved(name)
 	}
 }
 
 func (w *Watcher) withdraw(names []string) {
 	for _, name := range names {
 		w.registry.Withdraw(name)
-		w.setUnresolved(name, false)
+		w.clearUnresolved(name)
 		w.logger.Info("Withdrew metric no longer referenced by any HPA", "metric", name)
 	}
 }
 
-// setUnresolved adds (unresolved=true) or removes (unresolved=false) a metric
-// name from the retry set.
-func (w *Watcher) setUnresolved(name string, unresolved bool) {
+// markUnresolved adds a metric name to the retry set with the earliest time it
+// may be re-attempted. It reports whether the name was not in the set before.
+func (w *Watcher) markUnresolved(name string, notBefore time.Time) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if unresolved {
-		w.unresolved[name] = struct{}{}
-	} else {
-		delete(w.unresolved, name)
-	}
+	_, known := w.unresolved[name]
+	w.unresolved[name] = notBefore
+	return !known
 }
 
-// retryUnresolved re-attempts to advertise every metric currently in the retry
-// set. It is a no-op in steady state, when the set is empty.
+// clearUnresolved removes a metric name from the retry set.
+func (w *Watcher) clearUnresolved(name string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	delete(w.unresolved, name)
+}
+
+// retryUnresolved re-attempts to advertise every metric in the retry set whose
+// earliest retry time has passed. It is a no-op in steady state, when the set
+// is empty.
 func (w *Watcher) retryUnresolved() {
 	w.mu.Lock()
 	if len(w.unresolved) == 0 {
 		w.mu.Unlock()
 		return
 	}
+	now := time.Now()
 	names := make([]string, 0, len(w.unresolved))
-	for name := range w.unresolved {
-		names = append(names, name)
+	for name, notBefore := range w.unresolved {
+		if !now.Before(notBefore) {
+			names = append(names, name)
+		}
 	}
 	w.mu.Unlock()
 	for _, name := range names {

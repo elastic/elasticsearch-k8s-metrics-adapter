@@ -217,7 +217,7 @@ sequenceDiagram
         end
         alt found
             Reg->>Reg: add to customMetrics and advertisedByName
-        else transient error
+        else transient error or not found
             W->>W: mark name unresolved for retry
         end
     end
@@ -225,7 +225,7 @@ sequenceDiagram
         W->>Reg: Withdraw(name)
         Reg->>Reg: delete from customMetrics and advertisedByName
     end
-    W->>W: retryUnresolved, re-Advertise names that errored earlier
+    W->>W: retryUnresolved, re-Advertise names that errored or were not found earlier
 ```
 
 Notes:
@@ -238,10 +238,13 @@ Notes:
   called redundantly for an already-tracked name, which is why the registry
   needs no per-name resolution cache.
 - `retryUnresolved` exists because the tracker reports each name as `added` only
-  once. If that single `Advertise` hit a transient ES error, the name would
-  otherwise never be retried. Names that errored are kept in an `unresolved` set
-  and re-attempted on every later HPA event (status updates and the informer's
-  10-minute resync both re-deliver objects). It is a no-op in steady state.
+  once. If that single `Advertise` hit a transient ES error, or Elasticsearch did
+  not have the field yet, the name would otherwise never be retried. Such names
+  are kept in an `unresolved` set and re-attempted on later HPA events (status
+  updates and the informer's 10-minute resync both re-deliver objects). A
+  transient error is retried on the next event; a not-found answer is retried at
+  most once per minute, so a permanently unknown name stays cheap. It is a no-op
+  in steady state.
 
 ## Serving a metric value (sequence diagram)
 
@@ -281,15 +284,11 @@ stateDiagram-v2
     [*] --> Unknown : not referenced by any HPA
 
     Unknown --> Advertised : HPA references it<br/>Advertise → found
-    Unknown --> NotServed : HPA references it<br/>Advertise → not found
-    Unknown --> Unresolved : HPA references it<br/>Advertise → transient error
+    Unknown --> Unresolved : HPA references it<br/>Advertise → transient error<br/>or not found
 
     Unresolved --> Advertised : retry → found
-    Unresolved --> NotServed : retry → not found
+    Unresolved --> Unresolved : retry → transient error<br/>or not found
     Unresolved --> Unknown : HPA stops referencing it
-
-    NotServed --> Advertised : field later appears in ES<br/>(on next HPA add of the name)
-    NotServed --> Unknown : HPA stops referencing it
 
     Advertised --> Unknown : last HPA reference removed<br/>Withdraw
 
@@ -302,19 +301,23 @@ stateDiagram-v2
 
     note right of Unresolved
         Held in Watcher.unresolved,
-        re-Advertised on every
-        subsequent HPA event or resync
+        re-Advertised on a later HPA
+        event or resync: right away
+        after an error, at most once
+        a minute after a not-found
     end note
 ```
 
 - **Advertised** is the only state visible to Kubernetes. The metric is in
   `customMetrics` (so it is listed and routable) and `advertisedByName` (so it
   can be withdrawn by name).
-- **NotServed** means the registry returned `found=false`. The watcher does not
-  retry it (no `unresolved` entry); it is reconsidered only when the name is
-  added again as a *fresh* reference (its ref-count goes 0 → 1 again), which
-  re-probes Elasticsearch. There is no negative cache, so the cost of a
-  not-served name is exactly one `_field_caps` call per fresh reference.
+- **Unresolved** covers both a transient error and a `found=false` answer. The
+  latter is not treated as final: with dynamic mappings a field only exists once
+  the first document is indexed, and an HPA is often applied before the workload
+  it scales produces data. The watcher keeps the name in `unresolved` and
+  re-probes it on later HPA events, at most once per minute for a not-found
+  name, so the metric is advertised once the field appears. There is no negative
+  cache beyond that rate limit.
 - **Withdraw** removes the metric from the registry but **not** from the ES
   client's internal maps. That is deliberate: if an HPA references it again,
   `ResolveCustomMetric`'s fast path returns the cached metadata with no ES call.
@@ -369,6 +372,14 @@ A metric referenced by an HPA created *after* startup returns `404`
 already present at startup are unaffected: `Watcher.Start` blocks on the initial
 informer cache sync, so every already-referenced metric is advertised before the
 API server begins serving.
+
+If the field does not exist in Elasticsearch yet when the HPA is seen (for
+example the HPA was applied together with the workload and the first metric
+document has not been indexed), the metric stays `404` until a later HPA event
+re-probes it. The watcher retries a not-found name at most once per minute,
+driven by HPA status updates and the 10-minute informer resync, so expect up to
+a few minutes between the field appearing and the metric being served. In
+`full` mode the same field is picked up by the next 1-minute scan.
 
 ### `metricSets` is still required and still scopes resolution
 
