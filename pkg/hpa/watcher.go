@@ -107,22 +107,43 @@ func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncP
 	return w
 }
 
-// Start launches the informer and blocks until the cache has synced or the
-// context is cancelled. It returns once the initial list of HPAs has been
-// processed, so the caller can treat the registry as warm.
+// Start launches the informer and blocks until the initial list of HPAs has
+// been processed, so the caller can treat the registry as warm, or until
+// syncTimeout elapses. ctx governs the informer's lifetime, not the wait.
 //
 // It waits on the event handler's registration rather than informer.HasSynced:
 // the latter only reports that the store is populated, not that the initial
 // AddFunc events have been delivered and each metric advertised. Waiting on the
 // registration is what makes the cold-start guarantee real — the first scrape
 // after Start returns cannot 404 on an already-referenced metric.
-func (w *Watcher) Start(ctx context.Context) error {
+//
+// The wait is bounded because the caller starts the API server only after
+// Start returns, and an unbounded hang there is invisible: the monitoring
+// server is already up. On timeout two cases are told apart. If the informer
+// store itself never synced, the list/watch is failing (typically missing RBAC
+// on horizontalpodautoscalers) and an error is returned so the caller exits
+// loudly. If the store synced but the initial AddFunc replay is still running
+// (each Advertise is a synchronous _field_caps call, so a hung Elasticsearch
+// costs up to the per-metric timeout for every referenced name), Start returns
+// nil: the API server can start and the remaining names are advertised as the
+// replay completes.
+func (w *Watcher) Start(ctx context.Context, syncTimeout time.Duration) error {
 	w.logger.Info("Starting HPA watcher")
 	w.factory.Start(ctx.Done())
-	if !cache.WaitForCacheSync(ctx.Done(), w.registration.HasSynced) {
-		return fmt.Errorf("HPA watcher: informer cache failed to sync")
+	syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+	defer cancel()
+	if cache.WaitForCacheSync(syncCtx.Done(), w.registration.HasSynced) {
+		w.logger.Info("HPA watcher cache synced")
+		return nil
 	}
-	w.logger.Info("HPA watcher cache synced")
+	if ctx.Err() != nil {
+		return fmt.Errorf("HPA watcher: stopped before the informer cache synced: %w", ctx.Err())
+	}
+	if !w.informer.HasSynced() {
+		return fmt.Errorf("HPA watcher: informer cache did not sync within %s; check that the adapter can list and watch horizontalpodautoscalers", syncTimeout)
+	}
+	w.logger.Info("HPA watcher: store synced but the initial advertise replay is still running; starting without waiting for it",
+		"timeout", syncTimeout)
 	return nil
 }
 

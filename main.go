@@ -169,17 +169,6 @@ func main() {
 	metricsRegistry := registry.NewRegistry()
 	if len(resolverClients) > 0 {
 		metricsRegistry.WithResolverClients(resolverClients)
-		// Resolver-backed clients never receive a periodic "first sync" event, so
-		// seed the monitoring server's readiness counters with a synthetic empty
-		// update so /readyz doesn't block indefinitely on them.
-		for _, c := range resolverClients {
-			monitoringServer.UpdateCustomMetrics(c, map[cmprovider.CustomMetricInfo]struct{}{})
-			// Seed external metrics too: MetricTypes defaults to "serve all types",
-			// so the monitoring server tracks external metrics for the ES client even
-			// though the ES client doesn't support them. Without this, the external
-			// success counter stays 0 and /readyz returns 503 indefinitely.
-			monitoringServer.UpdateExternalMetrics(c, map[cmprovider.ExternalMetricInfo]struct{}{})
-		}
 	}
 
 	// In hpa mode, watch HorizontalPodAutoscaler objects and proactively
@@ -189,6 +178,21 @@ func main() {
 	// approach returns 404 before reaching us.
 	if cmd.DiscoveryMode == discoveryModeHPA {
 		cmd.startHPAWatcher(metricsRegistry)
+	}
+
+	// Resolver-backed clients never receive a periodic "first sync" event, so
+	// seed the monitoring server's readiness counters with a synthetic empty
+	// update so /readyz doesn't block indefinitely on them. This runs after the
+	// HPA watcher has synced on purpose: /readyz must stay 503 while the watcher
+	// is still blocked, otherwise a pod whose API server never starts would
+	// report Ready.
+	for _, c := range resolverClients {
+		monitoringServer.UpdateCustomMetrics(c, map[cmprovider.CustomMetricInfo]struct{}{})
+		// Seed external metrics too: MetricTypes defaults to "serve all types",
+		// so the monitoring server tracks external metrics for the ES client even
+		// though the ES client doesn't support them. Without this, the external
+		// success counter stays 0 and /readyz returns 503 indefinitely.
+		monitoringServer.UpdateExternalMetrics(c, map[cmprovider.ExternalMetricInfo]struct{}{})
 	}
 
 	sched := scheduler.NewScheduler(scheduledClients...)
@@ -222,13 +226,21 @@ type ElasticsearchAdapter struct {
 	DiscoveryMode            string
 }
 
-// hpaWatcherResyncPeriod drives the informer's full relist, which re-delivers
-// every HPA and so retries any metric resolutions that failed transiently.
-const hpaWatcherResyncPeriod = 10 * time.Minute
+const (
+	// hpaWatcherResyncPeriod drives the informer's full relist, which re-delivers
+	// every HPA and so retries any metric resolutions that failed transiently.
+	hpaWatcherResyncPeriod = 10 * time.Minute
+	// hpaWatcherSyncTimeout bounds how long startup waits for the HPA informer to
+	// sync and replay existing HPAs. Without a bound, a failing list/watch (e.g.
+	// missing RBAC) would hang startup forever with the API server never
+	// listening.
+	hpaWatcherSyncTimeout = 2 * time.Minute
+)
 
 // startHPAWatcher builds a Kubernetes clientset and starts the HPA watcher,
 // blocking until its cache has synced so the registry is warm before the API
-// server starts routing metric requests.
+// server starts routing metric requests. It exits the process if the informer
+// cannot sync within hpaWatcherSyncTimeout.
 func (a *ElasticsearchAdapter) startHPAWatcher(metricsRegistry *registry.Registry) {
 	clientCfg, err := a.ClientConfig()
 	if err != nil {
@@ -239,7 +251,7 @@ func (a *ElasticsearchAdapter) startHPAWatcher(metricsRegistry *registry.Registr
 		logErrorAndExit(err, "Unable to construct Kubernetes clientset for HPA watcher")
 	}
 	watcher := hpa.NewWatcher(clientset, metricsRegistry, hpaWatcherResyncPeriod)
-	if err := watcher.Start(context.Background()); err != nil {
+	if err := watcher.Start(context.Background(), hpaWatcherSyncTimeout); err != nil {
 		logErrorAndExit(err, "HPA watcher failed to start")
 	}
 }

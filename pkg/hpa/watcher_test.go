@@ -29,7 +29,9 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 // fakeRegistry records advertise/withdraw calls.
@@ -43,6 +45,8 @@ type fakeRegistry struct {
 	failTimes int
 	// notServed holds metric names Advertise reports as not found (no error).
 	notServed map[string]bool
+	// block, when non-nil, makes Advertise wait until the channel is closed.
+	block chan struct{}
 }
 
 func newFakeRegistry() *fakeRegistry {
@@ -54,6 +58,9 @@ func newFakeRegistry() *fakeRegistry {
 }
 
 func (f *fakeRegistry) Advertise(_ context.Context, metricName string) (bool, error) {
+	if f.block != nil {
+		<-f.block
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.attempts[metricName]++
@@ -126,7 +133,7 @@ func TestWatcher_AdvertisesExistingHPAsOnStart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	require.NoError(t, w.Start(ctx))
+	require.NoError(t, w.Start(ctx, time.Minute))
 
 	eventually(t, func() bool {
 		return reg.advertiseCount("prometheus.proxy_open_connections.value") == 1
@@ -140,7 +147,7 @@ func TestWatcher_AdvertisesOnHPACreate(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	require.NoError(t, w.Start(ctx))
+	require.NoError(t, w.Start(ctx, time.Minute))
 
 	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers("ns1").
 		Create(ctx, newHPA("ns1", "hpa1", "foo"), metav1.CreateOptions{})
@@ -159,7 +166,7 @@ func TestWatcher_RetriesTransientAdvertiseFailure(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	require.NoError(t, w.Start(ctx))
+	require.NoError(t, w.Start(ctx, time.Minute))
 
 	// Both initial attempts failed: the metric is not advertised yet.
 	eventually(t, func() bool { return reg.attemptCount("foo") >= 2 })
@@ -182,7 +189,7 @@ func TestWatcher_WithdrawsOnHPADelete(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	require.NoError(t, w.Start(ctx))
+	require.NoError(t, w.Start(ctx, time.Minute))
 
 	eventually(t, func() bool { return reg.advertiseCount("foo") == 1 })
 
@@ -204,7 +211,7 @@ func TestWatcher_RetriesNotFoundWhenFieldAppearsLater(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	require.NoError(t, w.Start(ctx))
+	require.NoError(t, w.Start(ctx, time.Minute))
 
 	eventually(t, func() bool { return reg.attemptCount("foo") >= 1 })
 	assert.Equal(t, 0, reg.advertiseCount("foo"))
@@ -231,7 +238,7 @@ func TestWatcher_NotFoundRetryIsRateLimited(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	require.NoError(t, w.Start(ctx))
+	require.NoError(t, w.Start(ctx, time.Minute))
 	eventually(t, func() bool { return reg.attemptCount("foo") == 1 })
 
 	for i := range 3 {
@@ -244,4 +251,39 @@ func TestWatcher_NotFoundRetryIsRateLimited(t *testing.T) {
 	// Give the events time to be delivered; none may re-probe within the interval.
 	time.Sleep(200 * time.Millisecond)
 	assert.Equal(t, 1, reg.attemptCount("foo"))
+}
+
+// When the informer cannot list HPAs (typically missing RBAC), Start must fail
+// within the sync timeout instead of blocking forever.
+func TestWatcher_StartFailsWhenInformerCannotSync(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	clientset.PrependReactor("list", "horizontalpodautoscalers",
+		func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.New("horizontalpodautoscalers is forbidden")
+		})
+	w := NewWatcher(clientset, newFakeRegistry(), 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := w.Start(ctx, 300*time.Millisecond)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "did not sync within")
+}
+
+// When the store synced but the initial advertise replay is slow, Start returns
+// nil at the timeout so the API server is not held back; the replay continues.
+func TestWatcher_StartContinuesWhenReplayIsSlow(t *testing.T) {
+	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
+	reg := newFakeRegistry()
+	release := make(chan struct{})
+	reg.block = release
+	w := NewWatcher(clientset, reg, 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx, 300*time.Millisecond))
+	assert.Equal(t, 0, reg.advertiseCount("foo"), "replay still blocked")
+
+	close(release)
+	eventually(t, func() bool { return reg.advertiseCount("foo") == 1 })
 }
