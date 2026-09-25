@@ -20,6 +20,7 @@ package elasticsearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -91,15 +92,25 @@ func (mc *MetricsClient) numericTypesFilter(ctx context.Context) []string {
 	return nil
 }
 
+// errProbeDefinitive marks a version-probe failure that will not go away by
+// retrying: the cluster answered, but with an error status or an unparseable
+// version. Transport failures (connection refused, DNS, timeout) do not carry
+// it.
+var errProbeDefinitive = errors.New("definitive probe failure")
+
 // supportsTypesFilter reports whether the connected cluster accepts the
-// _field_caps `types=` parameter, caching the result after the first probe. A
-// probe error is treated as "unsupported" — discovery degrades to client-side
-// filtering, which is correctness-equivalent — and is cached like a successful
-// probe. Caching the failure matters: omitting types= is a safe fallback, so a
-// persistent probe failure (permission denied on the info endpoint, a
-// misconfigured proxy) must not re-probe and re-log on every discovery/resolve.
-// The trade-off is that a cluster unreachable at the first probe stays on the
-// client-side path until the adapter restarts.
+// _field_caps `types=` parameter, caching the answer after the first probe
+// that gets one. A probe error is treated as "unsupported" for the current
+// call — discovery degrades to client-side filtering, which is
+// correctness-equivalent — but only a definitive failure is cached.
+//
+// Caching a definitive failure matters: omitting types= is a safe fallback, so
+// a persistent permission denied on the info endpoint or a misconfigured proxy
+// must not re-probe and re-log on every discovery/resolve. Caching a transport
+// failure would be wrong: the most likely time to hit one is the first probe,
+// when adapter and cluster restart together, and it would pin full mode to
+// the much larger unfiltered _field_caps payload until the adapter restarts.
+// A re-probe costs one tiny info request per discovery cycle.
 func (mc *MetricsClient) supportsTypesFilter(ctx context.Context) bool {
 	mc.lock.RLock()
 	cached := mc.typesFilterSupported
@@ -114,6 +125,10 @@ func (mc *MetricsClient) supportsTypesFilter(ctx context.Context) bool {
 			"Could not detect Elasticsearch version; omitting the _field_caps types= filter and filtering client-side",
 			"error", err.Error(),
 		)
+		if !errors.Is(err, errProbeDefinitive) {
+			// Transport failure: degrade this call only and re-probe next time.
+			return false
+		}
 		supported = false
 	}
 
@@ -125,7 +140,9 @@ func (mc *MetricsClient) supportsTypesFilter(ctx context.Context) bool {
 
 // clusterSupportsFieldCapsTypes queries the cluster info endpoint and reports
 // whether its version is >= 8.2, the first release that supports the
-// _field_caps `types=` filter.
+// _field_caps `types=` filter. Errors from a cluster that answered (error
+// status, unparseable body or version) wrap errProbeDefinitive; transport
+// errors do not.
 func clusterSupportsFieldCapsTypes(ctx context.Context, esClient *esv8.Client) (bool, error) {
 	res, err := esClient.Info(esClient.Info.WithContext(ctx))
 	if err != nil {
@@ -133,7 +150,7 @@ func clusterSupportsFieldCapsTypes(ctx context.Context, esClient *esv8.Client) (
 	}
 	defer res.Body.Close()
 	if res.IsError() {
-		return false, fmt.Errorf("[%s] elasticsearch info error", res.Status())
+		return false, fmt.Errorf("[%s] elasticsearch info error: %w", res.Status(), errProbeDefinitive)
 	}
 
 	var info struct {
@@ -142,12 +159,12 @@ func clusterSupportsFieldCapsTypes(ctx context.Context, esClient *esv8.Client) (
 		} `json:"version"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
-		return false, fmt.Errorf("error parsing elasticsearch info response: %w", err)
+		return false, fmt.Errorf("error parsing elasticsearch info response: %w: %w", err, errProbeDefinitive)
 	}
 
 	major, minor, err := parseMajorMinor(info.Version.Number)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%w: %w", err, errProbeDefinitive)
 	}
 	if major != fieldCapsTypesMinMajor {
 		return major > fieldCapsTypesMinMajor, nil

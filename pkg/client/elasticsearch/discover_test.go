@@ -19,8 +19,10 @@ package elasticsearch
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"testing"
 
@@ -193,6 +195,69 @@ func TestClusterSupportsFieldCapsTypes(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// A probe that gets an answer from the cluster (here 403) is cached: the info
+// endpoint is not re-hit on later calls.
+func TestSupportsTypesFilter_CachesDefinitiveFailure(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
+	require.NoError(t, err)
+	mc := &MetricsClient{logger: logr.Discard(), Client: esClient}
+
+	assert.False(t, mc.supportsTypesFilter(context.Background()))
+	assert.False(t, mc.supportsTypesFilter(context.Background()))
+	assert.Equal(t, 1, hits, "a definitive failure must be probed once")
+	require.NotNil(t, mc.typesFilterSupported)
+	assert.False(t, *mc.typesFilterSupported)
+}
+
+// A transport failure degrades the current call only; the next call re-probes,
+// and a cluster that has come back gets the server-side filter.
+func TestSupportsTypesFilter_RetriesTransportFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		_, _ = w.Write([]byte(`{"version":{"number":"9.4.2"}}`))
+	}))
+	// Start with the cluster unreachable: close the listener but keep its URL.
+	url := srv.URL
+	srv.Close()
+
+	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{url}}) //nolint:staticcheck
+	require.NoError(t, err)
+	mc := &MetricsClient{logger: logr.Discard(), Client: esClient}
+
+	assert.False(t, mc.supportsTypesFilter(context.Background()), "unreachable cluster: degrade this call")
+	assert.Nil(t, mc.typesFilterSupported, "a transport failure must not be cached")
+
+	// Cluster comes back on the same address.
+	srv2 := httptest.NewUnstartedServer(srv.Config.Handler)
+	l, err := newListener(url)
+	require.NoError(t, err)
+	srv2.Listener = l
+	srv2.Start()
+	defer srv2.Close()
+
+	assert.True(t, mc.supportsTypesFilter(context.Background()), "re-probe must pick up the recovered cluster")
+	require.NotNil(t, mc.typesFilterSupported)
+	assert.True(t, *mc.typesFilterSupported)
+}
+
+// newListener binds the host:port of a previously used httptest URL so a
+// replacement server can come up on the same address.
+func newListener(rawURL string) (net.Listener, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return net.Listen("tcp", u.Host)
 }
 
 func Test_recordStaticFields_registersAliasWithNamer(t *testing.T) {
