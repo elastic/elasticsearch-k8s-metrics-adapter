@@ -24,12 +24,15 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	esv8 "github.com/elastic/go-elasticsearch/v9"
 
@@ -258,6 +261,60 @@ func newListener(rawURL string) (net.Listener, error) {
 		return nil, err
 	}
 	return net.Listen("tcp", u.Host)
+}
+
+// A metric set whose index pattern errors must not shadow a later metric set
+// that serves the metric.
+func TestResolveCustomMetric_TriesLaterMetricSetAfterError(t *testing.T) {
+	const metric = "prometheus.foo.value"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		switch {
+		case r.URL.Path == "/":
+			_, _ = w.Write([]byte(`{"version":{"number":"9.4.2"}}`))
+		case strings.HasPrefix(r.URL.Path, "/bad-"):
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"boom"}`))
+		default:
+			_, _ = w.Write([]byte(`{"fields":{"` + metric + `":{"long":{"type":"long","metadata_field":false}}}}`))
+		}
+	}))
+	defer srv.Close()
+	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
+	require.NoError(t, err)
+
+	cfg, err := config.From([]byte(`
+metricServers:
+  - name: es
+    serverType: elasticsearch
+    metricSets:
+      - indices: [ 'bad-*' ]
+      - indices: [ 'good-*' ]
+`))
+	require.NoError(t, err)
+	namer, err := config.NewNamer(nil)
+	require.NoError(t, err)
+	mc := &MetricsClient{
+		logger:          logr.Discard(),
+		Client:          esClient,
+		metricServerCfg: cfg.MetricServers[0],
+		metrics:         map[string]provider.CustomMetricInfo{},
+		indexedMetrics:  map[string]MetricMetadata{},
+		namer:           namer,
+	}
+
+	info, found, err := mc.ResolveCustomMetric(context.Background(), metric)
+	require.NoError(t, err)
+	require.True(t, found, "the second metric set serves the metric")
+	assert.Equal(t, metric, info.Metric)
+	assert.Equal(t, []string{"good-*"}, mc.indexedMetrics[metric].Indices)
+
+	// When no metric set serves it, the error from the failing one is surfaced
+	// so the caller retries instead of treating the metric as absent.
+	_, found, err = mc.ResolveCustomMetric(context.Background(), "prometheus.other.value")
+	assert.False(t, found)
+	require.Error(t, err)
 }
 
 func Test_recordStaticFields_registersAliasWithNamer(t *testing.T) {

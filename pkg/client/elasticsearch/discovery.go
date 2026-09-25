@@ -409,6 +409,10 @@ func recordStaticFields(cfg config.MetricServer, rec *recorder) error {
 // On success, the metric is registered in the client's internal maps so subsequent
 // value queries via GetMetricByName / GetMetricBySelector can serve it without
 // re-querying ES.
+//
+// Every matching metric set is probed even if an earlier one errors, so a
+// failing index pattern does not shadow a later metric set that serves the
+// metric. The last error is returned only when no metric set resolved it.
 func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
 	// Fast path: already known. Entries here outlive registry.Withdraw (the
 	// registry clears its own tables but not this cache), so a re-referenced
@@ -421,6 +425,7 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 	mc.lock.RUnlock()
 
 	types := mc.numericTypesFilter(ctx)
+	var lastErr error
 	for _, metricSet := range mc.metricServerCfg.MetricSets {
 		// Skip metric sets whose configured patterns wouldn't accept this name.
 		fields := metricSet.Fields.FindMetadata(metricName)
@@ -430,7 +435,10 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 
 		found, err := fieldExistsAsNumeric(ctx, mc.Client, metricSet.Indices, metricName, types)
 		if err != nil {
-			return provider.CustomMetricInfo{}, false, err
+			// A later metric set may still serve the metric; remember the error
+			// and surface it only if none does.
+			lastErr = err
+			continue
 		}
 		if !found {
 			continue
@@ -456,7 +464,7 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 		return info, true, nil
 	}
 
-	return provider.CustomMetricInfo{}, false, nil
+	return provider.CustomMetricInfo{}, false, lastErr
 }
 
 // fieldExistsAsNumeric reports whether metricName exists as a numeric field in
