@@ -54,7 +54,15 @@ steps:
   - label: ":go: :kubernetes: Run e2e tests (hpa discovery mode)"
     command: |
       set -euo pipefail
-      trap 'make e2e-down || true' EXIT
+      # Capture the adapter, mock ES and HPA state before the cluster is torn
+      # down; these files are uploaded via artifact_paths so a failing scenario
+      # can be debugged after the fact.
+      dump_logs() {
+        kubectl -n metrics-adapter logs deploy/elasticsearch-metrics-apiserver --all-containers --tail=-1 > e2e-adapter.log 2>&1 || true
+        kubectl -n metrics-adapter logs deploy/mock-elasticsearch --tail=-1 > e2e-mockes.log 2>&1 || true
+        kubectl get hpa -A -o yaml > e2e-hpas.log 2>&1 || true
+      }
+      trap 'dump_logs; make e2e-down || true' EXIT
       # $$ escapes Buildkite pipeline interpolation so these expansions reach the
       # shell verbatim (a single $ would be interpolated at upload time, blanking
       # the undefined vars).
