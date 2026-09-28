@@ -51,104 +51,13 @@ how we know what to advertise.
 > walking them. When this doc says "the registry resolves a metric", that is what
 > it means.
 
-## Structure (class diagram)
-
-```mermaid
-classDiagram
-    class ElasticsearchAdapter {
-        +DiscoveryMode string
-        +startHPAWatcher(registry)
-    }
-
-    class Watcher {
-        -registry MetricRegistry
-        -tracker referenceTracker
-        -informer SharedIndexInformer
-        -unresolved set_of_names
-        +Start(ctx) error
-        -onUpsert(obj)
-        -onDelete(obj)
-        -advertiseOne(name)
-        -retryUnresolved()
-    }
-
-    class referenceTracker {
-        -byHPA hpaKey_to_nameSet
-        -refCount name_to_count
-        +upsert(key, names) added_removed
-        +remove(key) removed
-    }
-
-    class MetricRegistry {
-        <<interface>>
-        +Advertise(ctx, name) (bool, error)
-        +Withdraw(name)
-    }
-
-    class Registry {
-        -customMetrics info_to_clients
-        -advertisedByName name_to_info
-        -resolverClients clientList
-        +WithResolverClients(clients) Registry
-        +Advertise(ctx, name) bool_error
-        +Withdraw(name)
-        +GetCustomMetricClient(info) client
-        +ListAllCustomMetrics() infoList
-        +UpdateCustomMetrics(client, set)
-    }
-
-    class clientInterface {
-        <<interface>>
-        +ResolveCustomMetric(ctx, name) info_bool_error
-        +GetMetricByName(...) MetricValue
-        +GetMetricBySelector(...) MetricValueList
-        +ListCustomMetricInfos() set
-    }
-
-    class ElasticsearchMetricsClient {
-        -metrics name_to_info
-        -indexedMetrics name_to_metadata
-        -namer Namer
-        +ResolveCustomMetric(ctx, name)
-        +GetMetricByName(...)
-        -fieldExistsAsNumeric(...) bool
-    }
-
-    class recorder {
-        -metrics map
-        -indexedMetrics map
-        +recordStaticFields(cfg)
-        +processMappingDocument(...)
-    }
-
-    class aggregationProvider {
-        -registry Registry
-        +GetMetricByName(...)
-        +ListAllCustomMetrics()
-    }
-
-    ElasticsearchAdapter --> Watcher : starts (hpa mode)
-    ElasticsearchAdapter --> Registry : builds + wires
-    ElasticsearchAdapter --> aggregationProvider : serves via API server
-    Watcher --> referenceTracker : diffs HPA refs
-    Watcher ..> MetricRegistry : Advertise / Withdraw
-    Registry ..|> MetricRegistry : implements
-    aggregationProvider --> Registry : routes requests
-    Registry --> clientInterface : resolverClients + routing
-    ElasticsearchMetricsClient ..|> clientInterface : implements
-    ElasticsearchMetricsClient --> recorder : seeds static fields at construction
-```
-
-Key relationships:
-
-- The `Watcher` depends only on the small `MetricRegistry` interface
-  (`Advertise`/`Withdraw`), not the concrete `Registry` — easy to test with a fake.
-- The `Registry` depends on `client.Interface`, so it treats Elasticsearch and
-  custom-api backends uniformly.
-- `customMetrics` is simultaneously the **advertisement catalogue** (what
-  `ListAllCustomMetrics` returns) and the **routing table** (what
-  `GetCustomMetricClient` looks up). `advertisedByName` is a secondary index so a
-  metric can be withdrawn by its plain name.
+Two facts about the `Registry` matter for everything below. Its `customMetrics`
+map is simultaneously the **advertisement catalogue** (what
+`ListAllCustomMetrics` returns) and the **routing table** (what
+`GetCustomMetricClient` looks up); `advertisedByName` is a secondary index so a
+metric can be withdrawn by its plain name. And the `Watcher` depends only on the
+small `MetricRegistry` interface (`Advertise`/`Withdraw`), not on the concrete
+`Registry`.
 
 ## Startup (sequence diagram)
 
@@ -240,9 +149,10 @@ sequenceDiagram
 
 Notes:
 
-- `metricNames` only extracts **Pods** and **Object** metric types — those are
-  the ones served via the custom metrics API. `Resource`/`ContainerResource`
-  (cpu/memory) and `External` metrics go through other APIs and are ignored.
+- `metricNames` only extracts **Pods** metric types. `Object` metrics are also
+  served via the custom metrics API but are skipped for now (see Known
+  limitations). `Resource`/`ContainerResource` (cpu/memory) and `External`
+  metrics go through other APIs and are ignored.
 - The `referenceTracker` ensures a name is advertised when the **first** HPA
   references it and withdrawn when the **last** one stops — `Advertise` is never
   called redundantly for an already-tracked name, which is why the registry
