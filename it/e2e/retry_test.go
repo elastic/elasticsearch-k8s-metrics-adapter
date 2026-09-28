@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // A metric whose first resolution fails transiently is not dropped — it stays
@@ -47,11 +46,9 @@ func TestTransientFailureIsRetried(t *testing.T) {
 	// The first (failing) probe happens; the metric is not advertised yet.
 	eventually(t, 30*time.Second, func() bool { return fieldCapsAttempts(t, metric) >= 1 })
 
-	// Drive a retry via an HPA update (status updates from the HPA controller
-	// would also trigger this, but we force it for determinism).
-	bumpHPA(ctx, t, "default", "retry")
-
-	eventually(t, 60*time.Second, advertisedIs(ctx, metric, true))
+	// Drive the retry via HPA updates (status updates from the HPA controller
+	// would also trigger it, but we force them for determinism).
+	bumpUntilAdvertised(ctx, t, "default", "retry", metric, 2*time.Minute)
 	assert.GreaterOrEqual(t, fieldCapsAttempts(t, metric), 2,
 		"expected a second _field_caps probe (the retry) after the transient failure")
 }
@@ -72,16 +69,9 @@ func TestNotFoundIsRetriedWhenFieldAppears(t *testing.T) {
 	eventually(t, 30*time.Second, func() bool { return fieldCapsAttempts(t, metric) >= 1 })
 	consistently(t, 3*time.Second, advertisedIs(ctx, metric, false))
 
-	// The field appears. Not-found names are re-probed at most once per
-	// notFoundRetryInterval (1 min) on an HPA event, so keep bumping the HPA
-	// until the retry window has passed and the metric is picked up.
+	// The field appears; the next retry must pick it up.
 	mockAddKnown(t, metric)
-	deadline := time.Now().Add(2 * time.Minute)
-	for time.Now().Before(deadline) && !isAdvertised(ctx, t, metric) {
-		bumpHPA(ctx, t, "default", "late-field")
-		time.Sleep(5 * time.Second)
-	}
-	require.True(t, isAdvertised(ctx, t, metric), "metric must be advertised once the field appears in Elasticsearch")
+	bumpUntilAdvertised(ctx, t, "default", "late-field", metric, 2*time.Minute)
 	assert.GreaterOrEqual(t, fieldCapsAttempts(t, metric), 2,
 		"expected a second _field_caps probe after the not-found answer")
 }

@@ -170,6 +170,7 @@ func TestWatcher_RetriesTransientAdvertiseFailure(t *testing.T) {
 	// immediate same-event retry, so the metric stays unresolved across events.
 	reg.failTimes = 2
 	w := mustNewWatcher(t, clientset, reg)
+	w.retryInterval = 0 // retry on the very next event
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -214,7 +215,7 @@ func TestWatcher_RetriesNotFoundWhenFieldAppearsLater(t *testing.T) {
 	reg := newFakeRegistry()
 	reg.setNotServed("foo", true)
 	w := mustNewWatcher(t, clientset, reg)
-	w.notFoundRetryInterval = 0 // retry on the very next event
+	w.retryInterval = 0 // retry on the very next event
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -234,30 +235,38 @@ func TestWatcher_RetriesNotFoundWhenFieldAppearsLater(t *testing.T) {
 	eventually(t, func() bool { return reg.advertiseCount("foo") == 1 })
 }
 
-// A not-found metric is re-probed no more often than notFoundRetryInterval, so
-// a permanently unknown name does not cost one resolve per HPA status update.
-func TestWatcher_NotFoundRetryIsRateLimited(t *testing.T) {
-	clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
-	reg := newFakeRegistry()
-	reg.setNotServed("foo", true)
-	w := mustNewWatcher(t, clientset, reg)
-	w.notFoundRetryInterval = time.Hour
+// An unresolved metric, whether not found or failing, is re-attempted no more
+// often than retryInterval, so it does not cost one resolve (up to 10s on the
+// handler goroutine) per HPA status update.
+func TestWatcher_RetryIsRateLimited(t *testing.T) {
+	for name, setup := range map[string]func(*fakeRegistry){
+		"not found":       func(r *fakeRegistry) { r.setNotServed("foo", true) },
+		"transient error": func(r *fakeRegistry) { r.failTimes = 100 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			clientset := fake.NewSimpleClientset(newHPA("ns1", "hpa1", "foo"))
+			reg := newFakeRegistry()
+			setup(reg)
+			w := mustNewWatcher(t, clientset, reg)
+			w.retryInterval = time.Hour
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	require.NoError(t, w.Start(ctx, time.Minute))
-	eventually(t, func() bool { return reg.attemptCount("foo") == 1 })
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			require.NoError(t, w.Start(ctx, time.Minute))
+			eventually(t, func() bool { return reg.attemptCount("foo") == 1 })
 
-	for i := range 3 {
-		hpa := newHPA("ns1", "hpa1", "foo")
-		hpa.Annotations = map[string]string{"bump": string(rune('a' + i))}
-		_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers("ns1").
-			Update(ctx, hpa, metav1.UpdateOptions{})
-		require.NoError(t, err)
+			for i := range 3 {
+				hpa := newHPA("ns1", "hpa1", "foo")
+				hpa.Annotations = map[string]string{"bump": string(rune('a' + i))}
+				_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers("ns1").
+					Update(ctx, hpa, metav1.UpdateOptions{})
+				require.NoError(t, err)
+			}
+			// Give the events time to be delivered; none may re-attempt within the interval.
+			time.Sleep(200 * time.Millisecond)
+			assert.Equal(t, 1, reg.attemptCount("foo"))
+		})
 	}
-	// Give the events time to be delivered; none may re-probe within the interval.
-	time.Sleep(200 * time.Millisecond)
-	assert.Equal(t, 1, reg.attemptCount("foo"))
 }
 
 // When the informer cannot list HPAs (typically missing RBAC), Start must fail

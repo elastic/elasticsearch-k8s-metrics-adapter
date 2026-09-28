@@ -354,6 +354,23 @@ func bumpHPA(ctx context.Context, t *testing.T, namespace, name string) {
 	}
 }
 
+// bumpUntilAdvertised patches the HPA every few seconds until the metric is
+// advertised or timeout passes. The watcher re-attempts an unresolved metric at
+// most once per minute, on an HPA event, so the retry window has to elapse and
+// an event has to follow before the metric can appear.
+func bumpUntilAdvertised(ctx context.Context, t *testing.T, namespace, hpaName, metric string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if isAdvertised(ctx, t, metric) {
+			return
+		}
+		bumpHPA(ctx, t, namespace, hpaName)
+		time.Sleep(5 * time.Second)
+	}
+	t.Fatalf("metric %s not advertised within %s", metric, timeout)
+}
+
 // fieldCapsAttempts counts recorded _field_caps requests that probe the given
 // metric (its name appears in the fields= query parameter).
 func fieldCapsAttempts(t *testing.T, metric string) int {

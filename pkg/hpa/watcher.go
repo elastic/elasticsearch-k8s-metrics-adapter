@@ -63,21 +63,23 @@ type Watcher struct {
 	mu sync.Mutex
 	// unresolved holds the names of metrics that are referenced by at least one
 	// HPA but are not advertised yet, mapped to the earliest time they may be
-	// re-attempted. A transient Advertise error is retried on the next HPA event
-	// (including the periodic resync). A "not found" answer is retried too, no
-	// more often than notFoundRetryInterval: the field may appear later (dynamic
-	// mapping on the first document, a new backing index), and the tracker
-	// reports a name as added only once, so nothing else would re-probe it. In
-	// steady state this set is empty.
+	// re-attempted. Both a transient Advertise error and a "not found" answer
+	// land here and are retried on later HPA events (including the periodic
+	// resync): the field may appear later (dynamic mapping on the first
+	// document, a new backing index), and the tracker reports a name as added
+	// only once, so nothing else would re-probe it. In steady state this set is
+	// empty.
 	unresolved map[string]time.Time
-	// notFoundRetryInterval bounds how often a not-found metric is re-probed,
-	// so a name that stays unknown does not cost one _field_caps per HPA event
-	// (the HPA controller updates each HPA's status every ~15s).
-	notFoundRetryInterval time.Duration
+	// retryInterval bounds how often an unresolved name is re-attempted. Each
+	// attempt is a synchronous resolve of up to 10s on the handler goroutine,
+	// and the HPA controller updates each HPA's status every ~15s, so without
+	// a bound a name that keeps failing or stays unknown would delay every
+	// other HPA event.
+	retryInterval time.Duration
 }
 
-// defaultNotFoundRetryInterval is the default Watcher.notFoundRetryInterval.
-const defaultNotFoundRetryInterval = time.Minute
+// defaultRetryInterval is the default Watcher.retryInterval.
+const defaultRetryInterval = time.Minute
 
 // NewWatcher builds a Watcher over the given clientset. resyncPeriod is how
 // often the informer does a full relist; it re-delivers every HPA, which is
@@ -93,7 +95,7 @@ func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncP
 		informer:   informer,
 		unresolved: make(map[string]time.Time),
 
-		notFoundRetryInterval: defaultNotFoundRetryInterval,
+		retryInterval: defaultRetryInterval,
 	}
 	registration, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    w.onUpsert,
@@ -190,14 +192,17 @@ func (w *Watcher) onDelete(obj interface{}) {
 
 func (w *Watcher) advertise(names []string) {
 	for _, name := range names {
-		w.advertiseOne(name)
+		w.advertiseOne(name, false)
 	}
 }
 
 // advertiseOne resolves and advertises a single metric. On a transient failure
 // or a "not found" answer it records the name in the unresolved set so it is
-// retried on a later HPA event; on success it clears the name.
-func (w *Watcher) advertiseOne(name string) {
+// retried on a later HPA event; on success it clears the name. retry marks a
+// re-attempt from retryUnresolved: its outcome is logged at V(1) so a name that
+// keeps failing or is misspelled does not write the same default-level line on
+// every retry.
+func (w *Watcher) advertiseOne(name string, retry bool) {
 	// This resolve runs synchronously on the informer's handler goroutine, so a
 	// burst of newly-referenced metrics is processed one at a time and other HPA
 	// events queue behind it. That is acceptable: the set of distinct referenced
@@ -207,10 +212,20 @@ func (w *Watcher) advertiseOne(name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	found, err := w.registry.Advertise(ctx, name)
 	cancel()
+	logger := w.logger
+	if retry {
+		logger = w.logger.V(1)
+	}
 	switch {
 	case err != nil:
-		w.logger.Error(err, "Failed to advertise metric referenced by an HPA; will retry", "metric", name)
-		w.markUnresolved(name, time.Now())
+		if retry {
+			logger.Info("Failed to advertise metric referenced by an HPA; will retry",
+				"metric", name, "error", err.Error(), "retry_after", w.retryInterval)
+		} else {
+			w.logger.Error(err, "Failed to advertise metric referenced by an HPA; will retry",
+				"metric", name, "retry_after", w.retryInterval)
+		}
+		w.markUnresolved(name, time.Now().Add(w.retryInterval))
 	case !found:
 		// Not served *now*. With dynamic mappings the field only exists once the
 		// first document is indexed, and an HPA is often applied together with the
@@ -220,9 +235,9 @@ func (w *Watcher) advertiseOne(name string) {
 		// Advertise only consults the registry's resolver clients (the
 		// Elasticsearch clients). A metric served by another backend via periodic
 		// discovery is invisible here, so scope the message to what was checked.
-		w.logger.Info("HPA references a metric not found in any Elasticsearch metric set; will retry",
-			"metric", name, "retry_after", w.notFoundRetryInterval)
-		w.markUnresolved(name, time.Now().Add(w.notFoundRetryInterval))
+		logger.Info("HPA references a metric not found in any Elasticsearch metric set; will retry",
+			"metric", name, "retry_after", w.retryInterval)
+		w.markUnresolved(name, time.Now().Add(w.retryInterval))
 	default:
 		w.logger.Info("Advertised metric referenced by an HPA", "metric", name)
 		w.clearUnresolved(name)
@@ -270,7 +285,7 @@ func (w *Watcher) retryUnresolved() {
 	}
 	w.mu.Unlock()
 	for _, name := range names {
-		w.advertiseOne(name)
+		w.advertiseOne(name, true)
 	}
 }
 

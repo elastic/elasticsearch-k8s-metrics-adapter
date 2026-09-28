@@ -161,10 +161,11 @@ Notes:
   once. If that single `Advertise` hit a transient ES error, or Elasticsearch did
   not have the field yet, the name would otherwise never be retried. Such names
   are kept in an `unresolved` set and re-attempted on later HPA events (status
-  updates and the informer's 10-minute resync both re-deliver objects). A
-  transient error is retried on the next event; a not-found answer is retried at
-  most once per minute, so a permanently unknown name stays cheap. It is a no-op
-  in steady state.
+  updates and the informer's 10-minute resync both re-deliver objects), at most
+  once per minute per name, whether the last attempt errored or came back not
+  found. Each attempt is a synchronous resolve on the handler goroutine, so the
+  bound keeps a name that keeps failing from delaying other HPA events. It is a
+  no-op in steady state.
 
 ## Serving a metric value (sequence diagram)
 
@@ -222,9 +223,8 @@ stateDiagram-v2
     note right of Unresolved
         Held in Watcher.unresolved,
         re-Advertised on a later HPA
-        event or resync: right away
-        after an error, at most once
-        a minute after a not-found
+        event or resync, at most
+        once a minute per name
     end note
 ```
 
@@ -235,9 +235,9 @@ stateDiagram-v2
   latter is not treated as final: with dynamic mappings a field only exists once
   the first document is indexed, and an HPA is often applied before the workload
   it scales produces data. The watcher keeps the name in `unresolved` and
-  re-probes it on later HPA events, at most once per minute for a not-found
-  name, so the metric is advertised once the field appears. There is no negative
-  cache beyond that rate limit.
+  re-probes it on later HPA events, at most once per minute per name, so the
+  metric is advertised once the field appears. There is no negative cache beyond
+  that rate limit.
 - **Withdraw** removes the metric from the registry but **not** from the ES
   client's internal maps. That is deliberate: if an HPA references it again,
   `ResolveCustomMetric`'s fast path returns the cached metadata with no ES call.
