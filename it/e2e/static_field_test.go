@@ -45,7 +45,7 @@ func TestStaticSearchFieldServed(t *testing.T) {
 	mockAddKnown(t, staticMetric)
 
 	createPodsHPA(ctx, t, "default", "static-field", staticMetric)
-	eventually(t, 30*time.Second, func() bool { return isAdvertised(ctx, t, staticMetric) })
+	eventually(t, 30*time.Second, advertisedIs(ctx, staticMetric, true))
 
 	// The static field is resolved without any _field_caps probe.
 	for _, r := range mockRequests(t) {

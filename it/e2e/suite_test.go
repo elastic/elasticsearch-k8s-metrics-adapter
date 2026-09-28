@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -151,17 +152,20 @@ func apiServiceAvailable(ctx context.Context, name string) (bool, error) {
 
 // advertisedMetrics returns the set of custom metric names the adapter currently
 // advertises, derived from the API discovery list (resource names look like
-// "pods/<metric>" or "namespaces/<metric>").
-func advertisedMetrics(ctx context.Context, t *testing.T) map[string]struct{} {
-	t.Helper()
+// "pods/<metric>" or "namespaces/<metric>"). A failed request or a non-200
+// status is an error, not an empty set, so an absence check cannot pass on a
+// broken API.
+func advertisedMetrics(ctx context.Context) (map[string]struct{}, error) {
 	body, code, err := rawGet(ctx, customMetricsBase)
-	if err != nil || code != http.StatusOK {
-		// Discovery can briefly 503 while aggregation warms up; treat as empty.
-		return map[string]struct{}{}
+	if err != nil {
+		return nil, fmt.Errorf("custom metrics discovery: %w", err)
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("custom metrics discovery: status %d", code)
 	}
 	var list metav1.APIResourceList
 	if err := json.Unmarshal(body, &list); err != nil {
-		t.Fatalf("decoding custom metrics discovery: %v", err)
+		return nil, fmt.Errorf("decoding custom metrics discovery: %w", err)
 	}
 	out := make(map[string]struct{}, len(list.APIResources))
 	for _, r := range list.APIResources {
@@ -169,12 +173,33 @@ func advertisedMetrics(ctx context.Context, t *testing.T) map[string]struct{} {
 			out[metric] = struct{}{}
 		}
 	}
-	return out
+	return out, nil
 }
 
+// isAdvertised is a one-time check. It fails the test if discovery cannot be
+// read, so it must be called from the test goroutine, not from a polling
+// condition.
 func isAdvertised(ctx context.Context, t *testing.T, metric string) bool {
-	_, ok := advertisedMetrics(ctx, t)[metric]
+	t.Helper()
+	metrics, err := advertisedMetrics(ctx)
+	require.NoError(t, err)
+	_, ok := metrics[metric]
 	return ok
+}
+
+// advertisedIs returns a polling condition for eventually / consistently that
+// is true only when discovery was read successfully and the metric's presence
+// matches want. Discovery can briefly 503 while aggregation warms up:
+// eventually keeps polling through that, consistently fails on it.
+func advertisedIs(ctx context.Context, metric string, want bool) func() bool {
+	return func() bool {
+		metrics, err := advertisedMetrics(ctx)
+		if err != nil {
+			return false
+		}
+		_, ok := metrics[metric]
+		return ok == want
+	}
 }
 
 // metricValue is a minimal view of custom_metrics.MetricValueList.

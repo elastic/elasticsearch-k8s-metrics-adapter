@@ -39,7 +39,7 @@ func TestNoMappingCalls(t *testing.T) {
 	mockReset(t)
 	mockAddKnown(t, metric)
 	createPodsHPA(ctx, t, "default", "no-mapping", metric)
-	eventually(t, 30*time.Second, func() bool { return isAdvertised(ctx, t, metric) })
+	eventually(t, 30*time.Second, advertisedIs(ctx, metric, true))
 
 	reqs := mockRequests(t)
 	var sawFieldCaps bool

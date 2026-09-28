@@ -46,9 +46,7 @@ func TestAdapterReadyAndAggregated(t *testing.T) {
 func TestAdvertiseExistingHPAOnStartup(t *testing.T) {
 	ctx := context.Background()
 
-	eventually(t, 60*time.Second, func() bool {
-		return isAdvertised(ctx, t, startupMetric)
-	})
+	eventually(t, 60*time.Second, advertisedIs(ctx, startupMetric, true))
 
 	values, code := getPodMetric(ctx, t, metricQueryNamespace, startupMetric)
 	require.Equal(t, http.StatusOK, code, "fetching the advertised metric value should succeed")
@@ -70,9 +68,7 @@ func TestAdvertiseOnHPACreate(t *testing.T) {
 
 	createPodsHPA(ctx, t, "default", "advertise-on-create", metric)
 
-	eventually(t, 30*time.Second, func() bool {
-		return isAdvertised(ctx, t, metric)
-	})
+	eventually(t, 30*time.Second, advertisedIs(ctx, metric, true))
 }
 
 // A metric shared by two HPAs is withdrawn only when the LAST referencing HPA
@@ -84,15 +80,15 @@ func TestWithdrawOnLastHPADelete(t *testing.T) {
 
 	createPodsHPA(ctx, t, "default", "withdraw-a", metric)
 	createPodsHPA(ctx, t, "default", "withdraw-b", metric)
-	eventually(t, 30*time.Second, func() bool { return isAdvertised(ctx, t, metric) })
+	eventually(t, 30*time.Second, advertisedIs(ctx, metric, true))
 
 	// Delete the first HPA: still referenced by withdraw-b, so it must stay.
 	deleteHPA(ctx, t, "default", "withdraw-a")
-	consistently(t, 5*time.Second, func() bool { return isAdvertised(ctx, t, metric) })
+	consistently(t, 5*time.Second, advertisedIs(ctx, metric, true))
 
 	// Delete the last HPA: now it must be withdrawn.
 	deleteHPA(ctx, t, "default", "withdraw-b")
-	eventually(t, 30*time.Second, func() bool { return !isAdvertised(ctx, t, metric) })
+	eventually(t, 30*time.Second, advertisedIs(ctx, metric, false))
 }
 
 // A metric no HPA references is not advertised, and querying its value returns

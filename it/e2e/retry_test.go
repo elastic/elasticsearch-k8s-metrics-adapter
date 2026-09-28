@@ -51,7 +51,7 @@ func TestTransientFailureIsRetried(t *testing.T) {
 	// would also trigger this, but we force it for determinism).
 	bumpHPA(ctx, t, "default", "retry")
 
-	eventually(t, 60*time.Second, func() bool { return isAdvertised(ctx, t, metric) })
+	eventually(t, 60*time.Second, advertisedIs(ctx, metric, true))
 	assert.GreaterOrEqual(t, fieldCapsAttempts(t, metric), 2,
 		"expected a second _field_caps probe (the retry) after the transient failure")
 }
@@ -70,7 +70,7 @@ func TestNotFoundIsRetriedWhenFieldAppears(t *testing.T) {
 
 	// The first probe happens and comes back empty: nothing is advertised.
 	eventually(t, 30*time.Second, func() bool { return fieldCapsAttempts(t, metric) >= 1 })
-	consistently(t, 3*time.Second, func() bool { return !isAdvertised(ctx, t, metric) })
+	consistently(t, 3*time.Second, advertisedIs(ctx, metric, false))
 
 	// The field appears. Not-found names are re-probed at most once per
 	// notFoundRetryInterval (1 min) on an HPA event, so keep bumping the HPA
