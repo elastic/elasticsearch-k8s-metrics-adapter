@@ -55,11 +55,6 @@ var numericTypesSet = func() map[string]struct{} {
 	return m
 }()
 
-func isTypeAllowed(t string) bool {
-	_, ok := numericTypesSet[t]
-	return ok
-}
-
 // fieldTypes is the per-field slice of a _field_caps response: a map from ES
 // type name to that type's capabilities. Only the type name and the metadata
 // flag matter to us, so the value struct carries just those.
@@ -194,8 +189,8 @@ func parseMajorMinor(version string) (int, int, error) {
 	return major, minor, nil
 }
 
-// fetchNumericFieldCaps runs a _field_caps request for the given fields against
-// the index pattern and returns the decoded "fields" map. It is shared by
+// fetchFieldCaps runs a _field_caps request for the given fields against the
+// index pattern and returns the decoded "fields" map. It is shared by
 // discoverFieldCaps (fields=["*"]) and fieldExistsAsNumeric (a single field).
 //
 // When types is non-empty it is sent as the server-side type filter; callers
@@ -210,7 +205,7 @@ func parseMajorMinor(version string) (int, int, error) {
 // top-level "indices" array from the response. For an index pattern like
 // metrics-* that matches thousands of data-stream backing indices, that array
 // dominates the payload even though we only care about field types.
-func fetchNumericFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields, types []string) (fieldCaps, error) {
+func fetchFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields, types []string) (fieldCaps, error) {
 	req := esapi.FieldCapsRequest{
 		Index:             indices,
 		Fields:            fields,
@@ -252,7 +247,7 @@ func hasNumericType(types fieldTypes) bool {
 		if caps.MetadataField {
 			continue
 		}
-		if isTypeAllowed(t) {
+		if _, ok := numericTypesSet[t]; ok {
 			return true
 		}
 	}
@@ -300,9 +295,9 @@ func (mc *MetricsClient) discoverMetrics() error {
 // It replaces the former getMappingFor / _processMappingDocument approach which
 // fetched the full nested _mapping response (~43 MB for metrics-*) and walked
 // it recursively. _field_caps returns a flat structure, is filtered server-side
-// to numeric types, and is ~5x smaller on the wire (see fetchNumericFieldCaps).
+// to numeric types, and is ~5x smaller on the wire (see fetchFieldCaps).
 func discoverFieldCaps(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder, types []string) error {
-	fields, err := fetchNumericFieldCaps(context.Background(), esClient, metricSet.Indices, []string{"*"}, types)
+	fields, err := fetchFieldCaps(context.Background(), esClient, metricSet.Indices, []string{"*"}, types)
 	if err != nil {
 		return err
 	}
@@ -470,7 +465,7 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 // fieldExistsAsNumeric reports whether metricName exists as a numeric field in
 // the given index pattern, using a single-field _field_caps lookup.
 func fieldExistsAsNumeric(ctx context.Context, esClient *esv8.Client, indices []string, metricName string, types []string) (bool, error) {
-	fields, err := fetchNumericFieldCaps(ctx, esClient, indices, []string{metricName}, types)
+	fields, err := fetchFieldCaps(ctx, esClient, indices, []string{metricName}, types)
 	if err != nil {
 		return false, err
 	}

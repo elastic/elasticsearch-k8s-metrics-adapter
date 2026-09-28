@@ -58,10 +58,6 @@ type Watcher struct {
 	// HasSynced reports true only once the initial AddFunc replay has been
 	// delivered, unlike informer.HasSynced which only tracks the store.
 	registration cache.ResourceEventHandlerRegistration
-	// resyncPeriod is how often the informer does a full relist; it also re-delivers
-	// every HPA, which drives the retry of any transiently-failed resolutions (see
-	// retryUnresolved).
-	resyncPeriod time.Duration
 
 	// mu guards unresolved.
 	mu sync.Mutex
@@ -83,18 +79,19 @@ type Watcher struct {
 // defaultNotFoundRetryInterval is the default Watcher.notFoundRetryInterval.
 const defaultNotFoundRetryInterval = time.Minute
 
-// NewWatcher builds a Watcher over the given clientset.
+// NewWatcher builds a Watcher over the given clientset. resyncPeriod is how
+// often the informer does a full relist; it re-delivers every HPA, which is
+// one of the ticks that drives retryUnresolved.
 func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncPeriod time.Duration) (*Watcher, error) {
 	factory := informers.NewSharedInformerFactory(clientset, resyncPeriod)
 	informer := factory.Autoscaling().V2().HorizontalPodAutoscalers().Informer()
 	w := &Watcher{
-		logger:       log.ForPackage("hpa-watcher"),
-		registry:     registry,
-		tracker:      newReferenceTracker(),
-		factory:      factory,
-		informer:     informer,
-		resyncPeriod: resyncPeriod,
-		unresolved:   make(map[string]time.Time),
+		logger:     log.ForPackage("hpa-watcher"),
+		registry:   registry,
+		tracker:    newReferenceTracker(),
+		factory:    factory,
+		informer:   informer,
+		unresolved: make(map[string]time.Time),
 
 		notFoundRetryInterval: defaultNotFoundRetryInterval,
 	}
@@ -218,20 +215,14 @@ func (w *Watcher) advertiseOne(name string) {
 		// Not served *now*. With dynamic mappings the field only exists once the
 		// first document is indexed, and an HPA is often applied together with the
 		// workload it scales, before that workload produces data. Keep probing at a
-		// bounded rate so the metric is advertised once the field appears. Log the
-		// first miss at Info and the retries at V(1) to keep a permanently
-		// misnamed metric from flooding the log.
+		// bounded rate so the metric is advertised once the field appears.
 		//
 		// Advertise only consults the registry's resolver clients (the
 		// Elasticsearch clients). A metric served by another backend via periodic
 		// discovery is invisible here, so scope the message to what was checked.
-		first := w.markUnresolved(name, time.Now().Add(w.notFoundRetryInterval))
-		msg := "HPA references a metric not found in any Elasticsearch metric set; will retry"
-		if first {
-			w.logger.Info(msg, "metric", name, "retry_after", w.notFoundRetryInterval)
-		} else {
-			w.logger.V(1).Info(msg, "metric", name, "retry_after", w.notFoundRetryInterval)
-		}
+		w.logger.Info("HPA references a metric not found in any Elasticsearch metric set; will retry",
+			"metric", name, "retry_after", w.notFoundRetryInterval)
+		w.markUnresolved(name, time.Now().Add(w.notFoundRetryInterval))
 	default:
 		w.logger.Info("Advertised metric referenced by an HPA", "metric", name)
 		w.clearUnresolved(name)
@@ -247,13 +238,11 @@ func (w *Watcher) withdraw(names []string) {
 }
 
 // markUnresolved adds a metric name to the retry set with the earliest time it
-// may be re-attempted. It reports whether the name was not in the set before.
-func (w *Watcher) markUnresolved(name string, notBefore time.Time) bool {
+// may be re-attempted.
+func (w *Watcher) markUnresolved(name string, notBefore time.Time) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	_, known := w.unresolved[name]
 	w.unresolved[name] = notBefore
-	return !known
 }
 
 // clearUnresolved removes a metric name from the retry set.

@@ -103,6 +103,8 @@ func main() {
 			"Invalid --discovery-mode")
 	}
 
+	hpaMode := cmd.DiscoveryMode == discoveryModeHPA
+
 	adapterCfg, err := config.Parse()
 	if err != nil {
 		logErrorAndExit(err, "Unable to parse adapter configuration")
@@ -113,7 +115,7 @@ func main() {
 	// discovery that hpa mode skips. An aliased metric would therefore never
 	// resolve, failing with a confusing "not found". Reject the combination
 	// rather than accept a config that cannot work.
-	if cmd.DiscoveryMode == discoveryModeHPA {
+	if hpaMode {
 		for _, s := range adapterCfg.MetricServers {
 			if s.ServerType == elastisearchMetricServerType && s.Rename != nil {
 				logErrorAndExit(
@@ -149,7 +151,7 @@ func main() {
 	// still go through periodic discovery because their list endpoints are cheap.
 	var scheduledClients []client.Interface
 	var resolverClients []client.Interface
-	if cmd.DiscoveryMode == discoveryModeHPA {
+	if hpaMode {
 		for _, c := range metricsClients {
 			if c.GetConfiguration().ServerType == elastisearchMetricServerType {
 				resolverClients = append(resolverClients, c)
@@ -176,7 +178,7 @@ func main() {
 	// Kubernetes API server only routes a custom metric request to the adapter
 	// if the metric is already advertised — a purely lazy resolve-on-request
 	// approach returns 404 before reaching us.
-	if cmd.DiscoveryMode == discoveryModeHPA {
+	if hpaMode {
 		cmd.startHPAWatcher(metricsRegistry)
 	}
 

@@ -64,11 +64,6 @@ type metricsClient struct {
 
 	rwLock                                 sync.RWMutex
 	customMetricNamer, externalMetricNamer config.Namer
-
-	// customMetricInfos caches the most recent list returned by ListCustomMetricInfos,
-	// keyed by the (renamed) metric name. Used by ResolveCustomMetric to answer lazy
-	// lookups without an extra API call.
-	customMetricInfos map[string]provider.CustomMetricInfo
 }
 
 func (mc *metricsClient) GetConfiguration() config.MetricServer {
@@ -105,19 +100,14 @@ func (mc *metricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 	mc.rwLock.Lock()
 	defer mc.rwLock.Unlock()
 	mc.customMetricNamer = namer
-	infosByName := make(map[string]provider.CustomMetricInfo, len(metricInfos))
-	for info := range metricInfos {
-		infosByName[info.Metric] = info
-	}
-	mc.customMetricInfos = infosByName
 	return metricInfos, nil
 }
 
-func (mc *metricsClient) ResolveCustomMetric(_ context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
-	mc.rwLock.RLock()
-	defer mc.rwLock.RUnlock()
-	info, ok := mc.customMetricInfos[metricName]
-	return info, ok, nil
+// ResolveCustomMetric is never called for custom_api clients: they are
+// discovered periodically by the scheduler in every discovery mode and are not
+// registered as resolver clients. Report the metric as not served.
+func (mc *metricsClient) ResolveCustomMetric(context.Context, string) (provider.CustomMetricInfo, bool, error) {
+	return provider.CustomMetricInfo{}, false, nil
 }
 
 func (mc *metricsClient) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, selector labels.Selector) (*custom_metrics.MetricValue, error) {

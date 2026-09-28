@@ -20,21 +20,15 @@ package registry
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/metrics/pkg/apis/custom_metrics"
-	"k8s.io/metrics/pkg/apis/external_metrics"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/client"
-	"github.com/elastic/elasticsearch-k8s-metrics-adapter/pkg/config"
 )
 
 // customMetricInfo builds a CustomMetricInfo with the same field shape the
@@ -48,57 +42,14 @@ func customMetricInfo(name string) provider.CustomMetricInfo {
 	}
 }
 
-// resolverFakeClient is a minimal client.Interface whose ResolveCustomMetric
-// outcome is controlled by the test. It counts calls so we can assert how often
-// a metric is resolved.
-type resolverFakeClient struct {
-	name      string
-	known     map[string]provider.CustomMetricInfo
-	err       error
-	callCount int64
-}
-
-func (f *resolverFakeClient) GetConfiguration() config.MetricServer {
-	return config.MetricServer{Name: f.name}
-}
-
-func (f *resolverFakeClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]struct{}, error) {
-	return nil, nil
-}
-
-func (f *resolverFakeClient) ResolveCustomMetric(_ context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
-	atomic.AddInt64(&f.callCount, 1)
-	if f.err != nil {
-		return provider.CustomMetricInfo{}, false, f.err
-	}
-	info, ok := f.known[metricName]
-	return info, ok, nil
-}
-
-func (f *resolverFakeClient) GetMetricByName(types.NamespacedName, provider.CustomMetricInfo, labels.Selector) (*custom_metrics.MetricValue, error) {
-	panic("not implemented")
-}
-
-func (f *resolverFakeClient) GetMetricBySelector(string, labels.Selector, provider.CustomMetricInfo, labels.Selector) (*custom_metrics.MetricValueList, error) {
-	panic("not implemented")
-}
-
-func (f *resolverFakeClient) ListExternalMetrics() (map[provider.ExternalMetricInfo]struct{}, error) {
-	return nil, nil
-}
-
-func (f *resolverFakeClient) GetExternalMetric(string, string, labels.Selector) (*external_metrics.ExternalMetricValueList, error) {
-	panic("not implemented")
-}
-
-var _ client.Interface = &resolverFakeClient{}
-
-func newResolverFakeClient(name string, known ...string) *resolverFakeClient {
-	m := make(map[string]provider.CustomMetricInfo, len(known))
+// newResolverFakeClient returns a fake client that serves the given metric
+// names, keyed with the production CustomMetricInfo shape.
+func newResolverFakeClient(name string, known ...string) *fakeMetricsClient {
+	c := newFakeMetricsClient(name, 0)
 	for _, k := range known {
-		m[k] = customMetricInfo(k)
+		c.customMetrics[customMetricInfo(k)] = struct{}{}
 	}
-	return &resolverFakeClient{name: name, known: m}
+	return c
 }
 
 func TestRegistry_AdvertiseAndWithdraw(t *testing.T) {
@@ -160,7 +111,7 @@ func TestRegistry_AdvertiseNotServed(t *testing.T) {
 
 func TestRegistry_AdvertiseTransientErrorIsReturned(t *testing.T) {
 	c := newResolverFakeClient("c1")
-	c.err = errors.New("boom")
+	c.resolveErr = errors.New("boom")
 	r := NewRegistry().WithResolverClients([]client.Interface{c})
 
 	found, err := r.Advertise(context.Background(), "foo")
@@ -171,7 +122,7 @@ func TestRegistry_AdvertiseTransientErrorIsReturned(t *testing.T) {
 
 func TestRegistry_AdvertiseTriesLaterClientAfterError(t *testing.T) {
 	c1 := newResolverFakeClient("c1") // transiently failing
-	c1.err = errors.New("boom")
+	c1.resolveErr = errors.New("boom")
 	c2 := newResolverFakeClient("c2", "foo") // serves "foo"
 	r := NewRegistry().WithResolverClients([]client.Interface{c1, c2})
 
@@ -183,8 +134,8 @@ func TestRegistry_AdvertiseTriesLaterClientAfterError(t *testing.T) {
 	got, err := r.GetCustomMetricClient(customMetricInfo("foo"))
 	require.NoError(t, err)
 	assert.Equal(t, "c2", got.GetConfiguration().Name)
-	assert.Equal(t, int64(1), atomic.LoadInt64(&c1.callCount))
-	assert.Equal(t, int64(1), atomic.LoadInt64(&c2.callCount))
+	assert.Equal(t, int64(1), c1.resolveCalls.Load())
+	assert.Equal(t, int64(1), c2.resolveCalls.Load())
 }
 
 func TestRegistry_AdvertiseFirstMatchingClientWins(t *testing.T) {
@@ -199,8 +150,8 @@ func TestRegistry_AdvertiseFirstMatchingClientWins(t *testing.T) {
 	got, err := r.GetCustomMetricClient(customMetricInfo("foo"))
 	require.NoError(t, err)
 	assert.Equal(t, "c2", got.GetConfiguration().Name)
-	assert.Equal(t, int64(1), atomic.LoadInt64(&c1.callCount))
-	assert.Equal(t, int64(1), atomic.LoadInt64(&c2.callCount))
+	assert.Equal(t, int64(1), c1.resolveCalls.Load())
+	assert.Equal(t, int64(1), c2.resolveCalls.Load())
 }
 
 func TestRegistry_AdvertiseWithoutResolverClients(t *testing.T) {
