@@ -275,6 +275,23 @@ version) is cached, while a transport failure (cluster unreachable) is
 re-probed on the next discovery or resolve, so a cluster that was briefly down
 when the adapter started still gets the server-side filter once it is back.
 
+## Fields listed by `_field_caps` but not by `_mapping`
+
+The former `_mapping` walk only descended `properties` and accepted numeric
+leaf types. `_field_caps?fields=*` also returns three kinds of field that the
+walk skipped: **alias** fields (reported with their target's type), **runtime**
+fields, and numeric **multi-fields** (`foo.bar` declared under `fields`). The
+response gives no flag to tell them apart from regular mapped fields, so both
+modes now accept them: `full` mode can list a few more metrics than before, and
+`hpa` mode resolves an HPA that references one.
+
+The catch is at query time. A metric value is read from `_source.<metric>` of
+the latest matching document. An alias name, a runtime field and a multi-field
+path are usually not present in `_source`, so such a metric is advertised but
+returns no value, and the HPA reports `FailedGetPodsMetric`. This only matters
+if an HPA references one of these names; the metrics that worked before this
+change are unaffected.
+
 ## Known limitations
 
 `hpa` mode is a deliberate trade-off against `full`. `full` remains the

@@ -241,7 +241,11 @@ func fetchFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields,
 // Metadata fields are excluded. _field_caps?fields=* lists them alongside
 // mapped fields, and some are numeric (_seq_no and _doc_count are long), but
 // they are not metrics. The former _mapping walk only descended "properties"
-// and never saw them, so skipping them keeps the advertised set unchanged.
+// and never saw them.
+//
+// _field_caps also lists alias, runtime and numeric multi-fields, which that
+// walk skipped too. They cannot be told apart in the response, so they are
+// kept; see "Fields listed by _field_caps" in docs/hpa-discovery.md.
 func hasNumericType(types fieldTypes) bool {
 	for t, caps := range types {
 		if caps.MetadataField {
@@ -295,7 +299,8 @@ func (mc *MetricsClient) discoverMetrics() error {
 // It replaces the former getMappingFor / _processMappingDocument approach which
 // fetched the full nested _mapping response (~43 MB for metrics-*) and walked
 // it recursively. _field_caps returns a flat structure, is filtered server-side
-// to numeric types, and is ~5x smaller on the wire (see fetchFieldCaps).
+// to numeric types, and is ~5x smaller on the wire (see fetchFieldCaps). It can
+// list a few more fields than the walk did (see hasNumericType).
 func discoverFieldCaps(logger logr.Logger, metricSet config.MetricSet, esClient *esv8.Client, recorder *recorder, types []string) error {
 	fields, err := fetchFieldCaps(context.Background(), esClient, metricSet.Indices, []string{"*"}, types)
 	if err != nil {
