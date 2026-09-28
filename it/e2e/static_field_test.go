@@ -47,7 +47,7 @@ func TestStaticSearchFieldServed(t *testing.T) {
 	createPodsHPA(ctx, t, "default", "static-field", staticMetric)
 	eventually(t, 30*time.Second, func() bool { return isAdvertised(ctx, t, staticMetric) })
 
-	// Issue B: the static field is resolved without any _field_caps probe.
+	// The static field is resolved without any _field_caps probe.
 	for _, r := range mockRequests(t) {
 		if strings.HasSuffix(r.Path, "/_field_caps") {
 			assert.NotContains(t, r.Query, staticMetric,

@@ -3,9 +3,6 @@
 End-to-end tests for the adapter's **hpa discovery mode**, run against a local
 [kind](https://kind.sigs.k8s.io/) cluster with a mock Elasticsearch backend.
 
-The full plan (scenarios, phasing, rationale) lives in [plan.md](plan.md).
-This is **Phase 0**: scaffolding plus a smoke test.
-
 ## Prerequisites
 
 `docker`, `kind`, `kubectl`, `helm`, and `go` on the `PATH`.
@@ -14,14 +11,13 @@ This is **Phase 0**: scaffolding plus a smoke test.
 
 ```
 it/
-├── plan.md                 # the full test plan
 ├── kind-config.yaml        # 1-node cluster; maps mock ES NodePort 30080 to localhost
 ├── mockes/                 # mock Elasticsearch (stdlib-only Go HTTP server)
 ├── testdata/
 │   ├── values-e2e.yaml         # Helm values: hpa mode, mock ES host, no external secret
 │   ├── mockes.yaml             # mock ES Deployment + NodePort Service
 │   ├── externalsecret-crd-stub.yaml  # lets the chart's ExternalSecret apply inertly
-│   └── hpa-startup.yaml         # pre-existing HPA (scenario 1)
+│   └── hpa-startup.yaml         # HPA applied before the adapter starts
 └── e2e/                    # //go:build e2e Go suite (client-go + testify)
 ```
 
@@ -44,7 +40,7 @@ is exercised deterministically.
   in-cluster `mock-elasticsearch` Service, `envFrom: []`).
 - **mockes** is a controllable fake Elasticsearch. It serves `_field_caps` and
   `_search` (never `_mapping`), and exposes a control plane:
-  - `POST /__control` — e.g. `{"setKnown":["a.b.c"]}` or
+  - `POST /__control` — e.g. `{"addKnown":["a.b.c"]}` or
     `{"failNext":{"path":"_field_caps","times":1,"status":500}}`
   - `GET /__requests` — the recorded request log (used to prove no `_mapping`)
   - `POST /__reset` — clear log + injected failures

@@ -45,9 +45,9 @@ config:
         tls:
           insecureSkipTLSVerify: true
       metricSets:
-        # Numeric fields resolved on demand via _field_caps (scenarios 1, 2, 4).
+        # Numeric fields resolved on demand via _field_caps.
         - indices: ['metrics-*']
-        # A static, search-based field (scenario 7 / Issue B). It carries an
+        # A static, search-based field. It carries an
         # explicit query body, so it is served via _search without any
         # _field_caps probe. {{ .Metric }} is the adapter's query template (not
         # Helm) and is expanded at query time.

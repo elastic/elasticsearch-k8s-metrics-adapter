@@ -53,8 +53,6 @@ type failRule struct {
 }
 
 type controlRequest struct {
-	// SetKnown replaces the known-fields set when non-nil.
-	SetKnown *[]string `json:"setKnown"`
 	// AddKnown adds to the known-fields set without clobbering the rest, so
 	// concurrent tests don't disturb each other's fields.
 	AddKnown *[]string `json:"addKnown"`
@@ -215,12 +213,6 @@ func (s *server) handleControl(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if req.SetKnown != nil {
-		s.known = make(map[string]struct{}, len(*req.SetKnown))
-		for _, k := range *req.SetKnown {
-			s.known[k] = struct{}{}
-		}
-	}
 	if req.AddKnown != nil {
 		for _, k := range *req.AddKnown {
 			s.known[k] = struct{}{}

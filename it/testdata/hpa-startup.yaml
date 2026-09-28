@@ -1,5 +1,5 @@
-# HPA applied BEFORE the adapter starts, to exercise scenario 1: a metric
-# referenced by a pre-existing HPA must be advertised once the adapter's watcher
+# HPA applied BEFORE the adapter starts: a metric referenced by a pre-existing
+# HPA must be advertised once the adapter's watcher
 # completes its initial cache sync. The scaleTargetRef need not exist — the
 # adapter only reads spec.metrics.
 apiVersion: autoscaling/v2

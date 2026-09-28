@@ -347,13 +347,7 @@ func fieldCapsAttempts(t *testing.T, metric string) int {
 // consistently asserts cond stays true for the whole duration.
 func consistently(t *testing.T, d time.Duration, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(d)
-	for time.Now().Before(deadline) {
-		if !cond() {
-			t.Fatalf("condition became false within %s", d)
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
+	assert.Never(t, func() bool { return !cond() }, d, 500*time.Millisecond)
 }
 
 func eventually(t *testing.T, timeout time.Duration, cond func() bool) {

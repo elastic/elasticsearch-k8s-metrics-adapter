@@ -24,7 +24,7 @@ spec:
               name: http
           env:
             # Fields the mock reports as numeric (and serves values for). Tests
-            # can override the set at runtime via POST /__control {"setKnown":[...]}.
+            # add to the set at runtime via POST /__control {"addKnown":[...]}.
             - name: MOCKES_KNOWN_FIELDS
               value: "prometheus.proxy_open_connections.value"
           readinessProbe:
