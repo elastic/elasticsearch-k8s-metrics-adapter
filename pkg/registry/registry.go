@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -100,9 +101,14 @@ func NewRegistry() *Registry {
 
 // WithResolverClients registers the clients consulted by Advertise to resolve a
 // metric name on demand (via _field_caps) when the HPA watcher discovers it.
-// Clients are tried in order; the first to report the metric as served wins.
+// Clients are tried by descending priority, the same order used to route
+// periodically discovered metrics, and the first to report the metric as
+// served wins.
 func (r *Registry) WithResolverClients(clients []client.Interface) *Registry {
-	r.resolverClients = clients
+	sorted := make(metricClients, len(clients))
+	copy(sorted, clients)
+	sort.Sort(sorted)
+	r.resolverClients = sorted
 	return r
 }
 

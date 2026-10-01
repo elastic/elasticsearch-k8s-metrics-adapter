@@ -154,6 +154,25 @@ func TestRegistry_AdvertiseFirstMatchingClientWins(t *testing.T) {
 	assert.Equal(t, int64(1), c2.resolveCalls.Load())
 }
 
+// Resolver clients are consulted by descending priority (later entries in
+// metricServers have higher priority), matching the routing order of
+// periodically discovered metrics.
+func TestRegistry_AdvertisePrefersHigherPriorityClient(t *testing.T) {
+	low := newResolverFakeClient("low", "foo")
+	high := newResolverFakeClient("high", "foo")
+	high.Priority = 1
+	r := NewRegistry().WithResolverClients([]client.Interface{low, high})
+
+	found, err := r.Advertise(context.Background(), "foo")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	got, err := r.GetCustomMetricClient(customMetricInfo("foo"))
+	require.NoError(t, err)
+	assert.Equal(t, "high", got.GetConfiguration().Name)
+	assert.Equal(t, int64(0), low.resolveCalls.Load(), "the lower-priority client is not consulted")
+}
+
 func TestRegistry_AdvertiseWithoutResolverClients(t *testing.T) {
 	r := NewRegistry()
 	found, err := r.Advertise(context.Background(), "foo")
