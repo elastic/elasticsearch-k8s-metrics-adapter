@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-logr/logr"
 
@@ -98,10 +99,9 @@ type MetricsClient struct {
 	// namer maintains an index of the metric aliases and their real names in the Elasticsearch cluster.
 	namer config.Namer
 
-	// typesFilterSupported caches whether the connected cluster accepts the
-	// _field_caps types= parameter (ES >= 8.2). nil until first detected;
-	// guarded by lock.
-	typesFilterSupported *bool
+	// typesFilterUnsupported is set once the cluster rejects the _field_caps
+	// types= parameter (ES < 8.2); see MetricsClient.fieldCaps.
+	typesFilterUnsupported atomic.Bool
 
 	client dynamic.Interface
 	mapper apimeta.RESTMapper

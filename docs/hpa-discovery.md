@@ -262,18 +262,13 @@ their list endpoints are cheap.
 
 ## Elasticsearch version compatibility
 
-Both modes use the `_field_caps` `types=` parameter to filter to numeric fields
-server-side. That parameter was added in **Elasticsearch 8.2**; older clusters
-reject unknown query parameters with HTTP 400. The adapter detects the cluster
-version (via the info endpoint, cached after the first probe that gets an answer
-from the cluster) and, on clusters older than 8.2, omits `types=` and filters
-the field types client-side instead. All supported Elasticsearch versions
-therefore work; pre-8.2 clusters just receive a larger `_field_caps` response.
-If the version cannot be determined, the adapter degrades to the client-side
-path for that call: a definitive answer (an error status, an unparseable
-version) is cached, while a transport failure (cluster unreachable) is
-re-probed on the next discovery or resolve, so a cluster that was briefly down
-when the adapter started still gets the server-side filter once it is back.
+Both modes send the `_field_caps` `types=` parameter to filter to numeric fields
+server-side. The parameter was added in **Elasticsearch 8.2**; older clusters
+answer HTTP 400 with "unrecognized parameter: [types]". The first time a client
+gets that answer it switches to unfiltered requests for its lifetime and filters
+the field types client-side, so pre-8.2 clusters work too, at the cost of a
+larger `_field_caps` response. There is no version probe: the rejection is the
+detection, and any other error is reported as usual.
 
 ## Fields listed by `_field_caps` but not by `_mapping`
 

@@ -19,10 +19,9 @@ package elasticsearch
 
 import (
 	"context"
-	"net"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"sort"
 	"strings"
 	"testing"
@@ -99,9 +98,10 @@ metricServers:
 	rec := newRecorder(noopNamer)
 
 	metricSet := testConfig.MetricServers[0].MetricSets[0]
-	// Pass nil types to exercise the client-side filter (older-cluster path):
-	// the mock returns a keyword field regardless, and it must be excluded.
-	require.NoError(t, discoverFieldCaps(logr.Discard(), metricSet, esClient, rec, nil))
+	// The mock ignores types= and returns a keyword field; the client-side
+	// filter must exclude it.
+	mc := &MetricsClient{logger: logr.Discard(), Client: esClient}
+	require.NoError(t, mc.discoverFieldCaps(context.Background(), metricSet, rec))
 
 	got := make([]string, 0, len(rec.metrics))
 	for metric := range rec.metrics {
@@ -140,127 +140,57 @@ metricServers:
 	assert.Empty(t, cmp.Diff(want, got))
 }
 
-func TestParseMajorMinor(t *testing.T) {
-	tests := []struct {
-		version      string
-		major, minor int
-		wantErr      bool
-	}{
-		{version: "9.4.2", major: 9, minor: 4},
-		{version: "8.2.0", major: 8, minor: 2},
-		{version: "8.1.3", major: 8, minor: 1},
-		{version: "8.2.0-SNAPSHOT", major: 8, minor: 2},
-		{version: "7.17.10", major: 7, minor: 17},
-		{version: "8", wantErr: true},
-		{version: "", wantErr: true},
-		{version: "x.y.z", wantErr: true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.version, func(t *testing.T) {
-			major, minor, err := parseMajorMinor(tc.version)
-			if tc.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.major, major)
-			assert.Equal(t, tc.minor, minor)
-		})
-	}
-}
-
-func TestClusterSupportsFieldCapsTypes(t *testing.T) {
-	tests := []struct {
-		name    string
-		version string
-		want    bool
-	}{
-		{"9.x supports", "9.4.2", true},
-		{"8.2 is the floor", "8.2.0", true},
-		{"8.3 supports", "8.3.1", true},
-		{"8.1 too old", "8.1.3", false},
-		{"7.17 too old", "7.17.10", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("X-Elastic-Product", "Elasticsearch")
-				_, _ = w.Write([]byte(`{"version":{"number":"` + tc.version + `"}}`))
-			}))
-			defer srv.Close()
-
-			esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
-			require.NoError(t, err)
-
-			got, err := clusterSupportsFieldCapsTypes(context.Background(), esClient)
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-// A probe that gets an answer from the cluster (here 403) is cached: the info
-// endpoint is not re-hit on later calls.
-func TestSupportsTypesFilter_CachesDefinitiveFailure(t *testing.T) {
-	var hits int
+// A cluster that rejects the types= parameter (ES < 8.2) switches the client to
+// unfiltered requests for its lifetime.
+func TestFieldCaps_FallsBackWhenTypesParamUnsupported(t *testing.T) {
+	var withTypes, withoutTypes int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
+		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Elastic-Product", "Elasticsearch")
-		w.WriteHeader(http.StatusForbidden)
+		if r.URL.Query().Has("types") {
+			withTypes++
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[{"type":"illegal_argument_exception","reason":"request [/metrics-*/_field_caps] contains unrecognized parameter: [types]"}],"type":"illegal_argument_exception","reason":"request [/metrics-*/_field_caps] contains unrecognized parameter: [types]"},"status":400}`))
+			return
+		}
+		withoutTypes++
+		_, _ = w.Write([]byte(`{"fields":{"foo":{"long":{"type":"long","metadata_field":false}}}}`))
 	}))
 	defer srv.Close()
 	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
 	require.NoError(t, err)
 	mc := &MetricsClient{logger: logr.Discard(), Client: esClient}
 
-	assert.False(t, mc.supportsTypesFilter(context.Background()))
-	assert.False(t, mc.supportsTypesFilter(context.Background()))
-	assert.Equal(t, 1, hits, "a definitive failure must be probed once")
-	require.NotNil(t, mc.typesFilterSupported)
-	assert.False(t, *mc.typesFilterSupported)
+	fields, err := mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"})
+	require.NoError(t, err)
+	assert.Contains(t, fields, "foo")
+	assert.Equal(t, 1, withTypes, "types= is tried once")
+	assert.Equal(t, 1, withoutTypes, "then the request is retried without it")
+	assert.True(t, mc.typesFilterUnsupported.Load())
+
+	_, err = mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, withTypes, "the rejection is remembered")
+	assert.Equal(t, 2, withoutTypes)
 }
 
-// A transport failure degrades the current call only; the next call re-probes,
-// and a cluster that has come back gets the server-side filter.
-func TestSupportsTypesFilter_RetriesTransportFailure(t *testing.T) {
+// Any other 400 is a real error and does not disable the types= filter.
+func TestFieldCaps_OtherBadRequestIsAnError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Elastic-Product", "Elasticsearch")
-		_, _ = w.Write([]byte(`{"version":{"number":"9.4.2"}}`))
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"type":"illegal_argument_exception","reason":"bad request"},"status":400}`))
 	}))
-	// Start with the cluster unreachable: close the listener but keep its URL.
-	url := srv.URL
-	srv.Close()
-
-	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{url}}) //nolint:staticcheck
+	defer srv.Close()
+	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
 	require.NoError(t, err)
 	mc := &MetricsClient{logger: logr.Discard(), Client: esClient}
 
-	assert.False(t, mc.supportsTypesFilter(context.Background()), "unreachable cluster: degrade this call")
-	assert.Nil(t, mc.typesFilterSupported, "a transport failure must not be cached")
-
-	// Cluster comes back on the same address.
-	srv2 := httptest.NewUnstartedServer(srv.Config.Handler)
-	l, err := newListener(url)
-	require.NoError(t, err)
-	srv2.Listener = l
-	srv2.Start()
-	defer srv2.Close()
-
-	assert.True(t, mc.supportsTypesFilter(context.Background()), "re-probe must pick up the recovered cluster")
-	require.NotNil(t, mc.typesFilterSupported)
-	assert.True(t, *mc.typesFilterSupported)
-}
-
-// newListener binds the host:port of a previously used httptest URL so a
-// replacement server can come up on the same address.
-func newListener(rawURL string) (net.Listener, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, err
-	}
-	return net.Listen("tcp", u.Host)
+	_, err = mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"})
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, errTypesParamUnsupported))
+	assert.False(t, mc.typesFilterUnsupported.Load())
 }
 
 // A metric set whose index pattern errors must not shadow a later metric set
