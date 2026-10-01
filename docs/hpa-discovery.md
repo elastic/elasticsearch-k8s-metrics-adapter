@@ -100,8 +100,8 @@ The wait is bounded (2 minutes). If the informer store never synced by then,
 the list/watch is failing (typically missing RBAC on
 `horizontalpodautoscalers`) and the adapter exits with an error rather than
 hanging with the API server never listening. If the store synced but the
-replay is still running (each `Advertise` is a synchronous `_field_caps` call,
-so a hung Elasticsearch costs up to 10 s per referenced metric), the adapter
+replay is still running (each `Advertise` is one or more synchronous
+`_field_caps` calls, each bounded to 10 s), the adapter
 starts serving and the remaining names are advertised as the replay completes.
 Readiness for the Elasticsearch clients is seeded only after `Start` returns,
 so `/readyz` stays 503 while the watcher is blocked.
