@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/itchyny/gojq"
@@ -66,6 +67,10 @@ type fieldTypes = map[string]struct {
 // fieldCaps maps a field name to its fieldTypes. It is the shape decoded from
 // the "fields" object of a _field_caps response.
 type fieldCaps = map[string]fieldTypes
+
+// fieldCapsTimeout bounds a single _field_caps request. The HTTP client has no
+// timeout unless clientConfig.timeout is set.
+const fieldCapsTimeout = 10 * time.Second
 
 // fieldCapsTypesMinMajor / fieldCapsTypesMinMinor is the first Elasticsearch
 // version that accepts the _field_caps `types=` query parameter
@@ -206,6 +211,10 @@ func parseMajorMinor(version string) (int, int, error) {
 // metrics-* that matches thousands of data-stream backing indices, that array
 // dominates the payload even though we only care about field types.
 func fetchFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields, types []string) (fieldCaps, error) {
+	// Bound each request on its own, so a hung index pattern or cluster cannot
+	// consume the time budget of the next metric set or resolver client.
+	ctx, cancel := context.WithTimeout(ctx, fieldCapsTimeout)
+	defer cancel()
 	req := esapi.FieldCapsRequest{
 		Index:             indices,
 		Fields:            fields,

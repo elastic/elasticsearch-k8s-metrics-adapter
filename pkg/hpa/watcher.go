@@ -71,10 +71,11 @@ type Watcher struct {
 	// empty.
 	unresolved map[string]time.Time
 	// retryInterval bounds how often an unresolved name is re-attempted. Each
-	// attempt is a synchronous resolve of up to 10s on the handler goroutine,
-	// and the HPA controller updates each HPA's status every ~15s, so without
-	// a bound a name that keeps failing or stays unknown would delay every
-	// other HPA event.
+	// attempt is a synchronous resolve on the handler goroutine (one bounded
+	// _field_caps request per resolver client and metric set), and the HPA
+	// controller updates each HPA's status every ~15s, so without a bound a
+	// name that keeps failing or stays unknown would delay every other HPA
+	// event.
 	retryInterval time.Duration
 }
 
@@ -127,8 +128,8 @@ func NewWatcher(clientset kubernetes.Interface, registry MetricRegistry, resyncP
 // store itself never synced, the list/watch is failing (typically missing RBAC
 // on horizontalpodautoscalers) and an error is returned so the caller exits
 // loudly. If the store synced but the initial AddFunc replay is still running
-// (each Advertise is a synchronous _field_caps call, so a hung Elasticsearch
-// costs up to the per-metric timeout for every referenced name), Start returns
+// (each Advertise is one or more synchronous _field_caps calls, each bounded by
+// the Elasticsearch client's per-request timeout), Start returns
 // nil: the API server can start and the remaining names are advertised as the
 // replay completes.
 func (w *Watcher) Start(ctx context.Context, syncTimeout time.Duration) error {
@@ -206,12 +207,11 @@ func (w *Watcher) advertiseOne(name string, retry bool) {
 	// This resolve runs synchronously on the informer's handler goroutine, so a
 	// burst of newly-referenced metrics is processed one at a time and other HPA
 	// events queue behind it. That is acceptable: the set of distinct referenced
-	// metrics is small and each resolve is a single tiny _field_caps call. The
-	// per-metric timeout bounds the worst case (a hung Elasticsearch) so one bad
-	// metric cannot stall the handler indefinitely.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	found, err := w.registry.Advertise(ctx, name)
-	cancel()
+	// metrics is small and each resolve is a tiny _field_caps call. Each request
+	// is bounded by the Elasticsearch client, not by one deadline shared across
+	// resolver clients and metric sets, so a hung cluster or index pattern
+	// cannot starve the healthy ones of their attempt.
+	found, err := w.registry.Advertise(context.Background(), name)
 	logger := w.logger
 	if retry {
 		logger = w.logger.V(1)
