@@ -145,15 +145,17 @@ func main() {
 		logErrorAndExit(err, "Unable to create metrics provider")
 	}
 
-	// In hpa mode, Elasticsearch clients skip the periodic scheduler (and its
-	// full _mapping scan) entirely; metrics are resolved on demand via
-	// _field_caps, driven by the HPA watcher. Other client types (custom_api)
-	// still go through periodic discovery because their list endpoints are cheap.
+	// In hpa mode, Elasticsearch clients that serve custom metrics skip the
+	// periodic scheduler entirely; metrics are resolved on demand via
+	// _field_caps, driven by the HPA watcher. Other clients (custom_api, or an
+	// Elasticsearch server whose metricTypes exclude custom) still go through
+	// periodic discovery, which applies the same metricTypes check.
 	var scheduledClients []client.Interface
 	var resolverClients []client.Interface
 	if hpaMode {
 		for _, c := range metricsClients {
-			if c.GetConfiguration().ServerType == elastisearchMetricServerType {
+			cfg := c.GetConfiguration()
+			if cfg.ServerType == elastisearchMetricServerType && cfg.MetricTypes.HasType(config.CustomMetricType) {
 				resolverClients = append(resolverClients, c)
 			} else {
 				scheduledClients = append(scheduledClients, c)
