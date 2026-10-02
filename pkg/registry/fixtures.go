@@ -18,7 +18,9 @@
 package registry
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -35,6 +37,11 @@ type fakeMetricsClient struct {
 	config.MetricServer
 	customMetrics   map[provider.CustomMetricInfo]struct{}
 	externalMetrics map[provider.ExternalMetricInfo]struct{}
+
+	// resolveErr, when set, makes ResolveCustomMetric fail; resolveCalls counts
+	// its invocations.
+	resolveErr   error
+	resolveCalls atomic.Int64
 }
 
 var _ client.Interface = &fakeMetricsClient{}
@@ -68,6 +75,19 @@ func (fmc *fakeMetricsClient) GetExternalMetric(string, string, labels.Selector)
 
 func (fmc *fakeMetricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]struct{}, error) {
 	return fmc.customMetrics, nil
+}
+
+func (fmc *fakeMetricsClient) ResolveCustomMetric(_ context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
+	fmc.resolveCalls.Add(1)
+	if fmc.resolveErr != nil {
+		return provider.CustomMetricInfo{}, false, fmc.resolveErr
+	}
+	for info := range fmc.customMetrics {
+		if info.Metric == metricName {
+			return info, true, nil
+		}
+	}
+	return provider.CustomMetricInfo{}, false, nil
 }
 
 func (fmc *fakeMetricsClient) ListExternalMetrics() (map[provider.ExternalMetricInfo]struct{}, error) {

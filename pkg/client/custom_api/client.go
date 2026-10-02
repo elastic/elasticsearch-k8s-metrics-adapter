@@ -18,6 +18,7 @@
 package custom_api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -100,6 +101,13 @@ func (mc *metricsClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]
 	defer mc.rwLock.Unlock()
 	mc.customMetricNamer = namer
 	return metricInfos, nil
+}
+
+// ResolveCustomMetric is never called for custom_api clients: they are
+// discovered periodically by the scheduler in every discovery mode and are not
+// registered as resolver clients. Report the metric as not served.
+func (mc *metricsClient) ResolveCustomMetric(context.Context, string) (provider.CustomMetricInfo, bool, error) {
+	return provider.CustomMetricInfo{}, false, nil
 }
 
 func (mc *metricsClient) GetMetricByName(name types.NamespacedName, info provider.CustomMetricInfo, selector labels.Selector) (*custom_metrics.MetricValue, error) {

@@ -18,6 +18,7 @@
 package monitoring
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -100,6 +101,10 @@ func (f fakeClient) GetConfiguration() config.MetricServer {
 }
 
 func (f fakeClient) ListCustomMetricInfos() (map[provider.CustomMetricInfo]struct{}, error) {
+	panic("implement me")
+}
+
+func (f fakeClient) ResolveCustomMetric(context.Context, string) (provider.CustomMetricInfo, bool, error) {
 	panic("implement me")
 }
 
