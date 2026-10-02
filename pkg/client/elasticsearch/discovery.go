@@ -68,9 +68,16 @@ type fieldTypes = map[string]struct {
 // the "fields" object of a _field_caps response.
 type fieldCaps = map[string]fieldTypes
 
-// fieldCapsTimeout bounds a single _field_caps request. The HTTP client has no
-// timeout unless clientConfig.timeout is set.
-const fieldCapsTimeout = 10 * time.Second
+// Bounds for a single _field_caps request. The HTTP client has no timeout
+// unless clientConfig.timeout is set. A single-field lookup (hpa mode) is
+// cheap, so it gets a short bound. A fields=* discovery over a large index
+// pattern (full mode) can take much longer, so it gets a generous one: before
+// _field_caps replaced _mapping it had no bound at all, and a bound a large
+// cluster never meets would fail every discovery cycle.
+const (
+	fieldCapsLookupTimeout    = 10 * time.Second
+	fieldCapsDiscoveryTimeout = 60 * time.Second
+)
 
 // errTypesParamUnsupported is returned by fetchFieldCaps when Elasticsearch
 // rejects the `types=` parameter. It was added in 8.2
@@ -83,17 +90,17 @@ var errTypesParamUnsupported = errors.New("_field_caps types= parameter not supp
 // to unfiltered requests for its lifetime and callers filter the (larger)
 // response via hasNumericType, so pre-8.2 clusters keep working. There is no
 // version probe: the rejection itself is the detection, and any other error is
-// returned as usual.
-func (mc *MetricsClient) fieldCaps(ctx context.Context, indices, fields []string) (fieldCaps, error) {
+// returned as usual. timeout bounds each request.
+func (mc *MetricsClient) fieldCaps(ctx context.Context, indices, fields []string, timeout time.Duration) (fieldCaps, error) {
 	if !mc.typesFilterUnsupported.Load() {
-		caps, err := fetchFieldCaps(ctx, mc.Client, indices, fields, numericTypes)
+		caps, err := fetchFieldCaps(ctx, mc.Client, indices, fields, numericTypes, timeout)
 		if !errors.Is(err, errTypesParamUnsupported) {
 			return caps, err
 		}
 		mc.logger.Info("Elasticsearch rejected the _field_caps types= parameter (added in 8.2); filtering field types client-side from now on")
 		mc.typesFilterUnsupported.Store(true)
 	}
-	return fetchFieldCaps(ctx, mc.Client, indices, fields, nil)
+	return fetchFieldCaps(ctx, mc.Client, indices, fields, nil, timeout)
 }
 
 // fetchFieldCaps runs a _field_caps request for the given fields against the
@@ -108,10 +115,10 @@ func (mc *MetricsClient) fieldCaps(ctx context.Context, indices, fields []string
 // top-level "indices" array from the response. For an index pattern like
 // metrics-* that matches thousands of data-stream backing indices, that array
 // dominates the payload even though we only care about field types.
-func fetchFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields, types []string) (fieldCaps, error) {
+func fetchFieldCaps(ctx context.Context, esClient *esv8.Client, indices, fields, types []string, timeout time.Duration) (fieldCaps, error) {
 	// Bound each request on its own, so a hung index pattern or cluster cannot
 	// consume the time budget of the next metric set or resolver client.
-	ctx, cancel := context.WithTimeout(ctx, fieldCapsTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req := esapi.FieldCapsRequest{
 		Index:             indices,
@@ -213,7 +220,7 @@ func (mc *MetricsClient) discoverMetrics() error {
 // to numeric types, and is ~5x smaller on the wire (see fetchFieldCaps). It can
 // list a few more fields than the walk did (see hasNumericType).
 func (mc *MetricsClient) discoverFieldCaps(ctx context.Context, metricSet config.MetricSet, recorder *recorder) error {
-	fields, err := mc.fieldCaps(ctx, metricSet.Indices, []string{"*"})
+	fields, err := mc.fieldCaps(ctx, metricSet.Indices, []string{"*"}, fieldCapsDiscoveryTimeout)
 	if err != nil {
 		return err
 	}
@@ -380,7 +387,7 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 // fieldExistsAsNumeric reports whether metricName exists as a numeric field in
 // the given index pattern, using a single-field _field_caps lookup.
 func (mc *MetricsClient) fieldExistsAsNumeric(ctx context.Context, indices []string, metricName string) (bool, error) {
-	fields, err := mc.fieldCaps(ctx, indices, []string{metricName})
+	fields, err := mc.fieldCaps(ctx, indices, []string{metricName}, fieldCapsLookupTimeout)
 	if err != nil {
 		return false, err
 	}

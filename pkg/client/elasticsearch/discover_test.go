@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
@@ -161,14 +162,14 @@ func TestFieldCaps_FallsBackWhenTypesParamUnsupported(t *testing.T) {
 	require.NoError(t, err)
 	mc := &MetricsClient{logger: logr.Discard(), Client: esClient}
 
-	fields, err := mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"})
+	fields, err := mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"}, fieldCapsLookupTimeout)
 	require.NoError(t, err)
 	assert.Contains(t, fields, "foo")
 	assert.Equal(t, 1, withTypes, "types= is tried once")
 	assert.Equal(t, 1, withoutTypes, "then the request is retried without it")
 	assert.True(t, mc.typesFilterUnsupported.Load())
 
-	_, err = mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"})
+	_, err = mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"}, fieldCapsLookupTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, 1, withTypes, "the rejection is remembered")
 	assert.Equal(t, 2, withoutTypes)
@@ -187,7 +188,7 @@ func TestFieldCaps_OtherBadRequestIsAnError(t *testing.T) {
 	require.NoError(t, err)
 	mc := &MetricsClient{logger: logr.Discard(), Client: esClient}
 
-	_, err = mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"})
+	_, err = mc.fieldCaps(context.Background(), []string{"metrics-*"}, []string{"foo"}, fieldCapsLookupTimeout)
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, errTypesParamUnsupported))
 	assert.False(t, mc.typesFilterUnsupported.Load())
@@ -245,6 +246,30 @@ metricServers:
 	_, found, err = mc.ResolveCustomMetric(context.Background(), "prometheus.other.value")
 	assert.False(t, found)
 	require.Error(t, err)
+}
+
+// The timeout passed to fetchFieldCaps bounds the request.
+func TestFetchFieldCaps_HonoursTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(200 * time.Millisecond):
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		_, _ = w.Write([]byte(`{"fields":{}}`))
+	}))
+	defer srv.Close()
+	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
+	require.NoError(t, err)
+
+	_, err = fetchFieldCaps(context.Background(), esClient, []string{"metrics-*"}, []string{"*"}, numericTypes, 20*time.Millisecond)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+
+	_, err = fetchFieldCaps(context.Background(), esClient, []string{"metrics-*"}, []string{"*"}, numericTypes, 5*time.Second)
+	require.NoError(t, err)
 }
 
 func Test_recordStaticFields_registersAliasWithNamer(t *testing.T) {
