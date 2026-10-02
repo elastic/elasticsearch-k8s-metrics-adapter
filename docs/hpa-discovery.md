@@ -323,7 +323,9 @@ a few minutes between the field appearing and the metric being served. In
 `metricSets` is not optional in `hpa` mode. Validation rejects an Elasticsearch
 server with no `metricSets` in every mode, and the configured `metricSets` still
 supply both the `_field_caps` target indices and the field-pattern allow-list
-used to accept or reject a referenced metric name.
+used to accept or reject a referenced metric name. When several metric sets
+serve the same field, the last configured one wins, as in `full` mode where a
+later metric set overwrites an earlier one.
 
 ### Object-type metrics are not served
 

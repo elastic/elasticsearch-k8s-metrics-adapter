@@ -328,9 +328,12 @@ func recordStaticFields(cfg config.MetricServer, rec *recorder) error {
 // value queries via GetMetricByName / GetMetricBySelector can serve it without
 // re-querying ES.
 //
-// Every matching metric set is probed even if an earlier one errors, so a
-// failing index pattern does not shadow a later metric set that serves the
-// metric. The last error is returned only when no metric set resolved it.
+// Metric sets are probed last-configured first and the first hit wins. That
+// matches full mode, where a later metric set overwrites an earlier one, so the
+// same metric set serves a metric in both modes. Probing continues past a
+// metric set that errors, so a failing index pattern does not shadow another
+// metric set that serves the metric. The last error is returned only when no
+// metric set resolved it.
 func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName string) (provider.CustomMetricInfo, bool, error) {
 	// Fast path: already known. Entries here outlive registry.Withdraw (the
 	// registry clears its own tables but not this cache), so a re-referenced
@@ -343,7 +346,9 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 	mc.lock.RUnlock()
 
 	var lastErr error
-	for _, metricSet := range mc.metricServerCfg.MetricSets {
+	metricSets := mc.metricServerCfg.MetricSets
+	for i := len(metricSets) - 1; i >= 0; i-- {
+		metricSet := metricSets[i]
 		// Skip metric sets whose configured patterns wouldn't accept this name.
 		fields := metricSet.Fields.FindMetadata(metricName)
 		if fields == nil {
@@ -352,7 +357,7 @@ func (mc *MetricsClient) ResolveCustomMetric(ctx context.Context, metricName str
 
 		found, err := mc.fieldExistsAsNumeric(ctx, metricSet.Indices, metricName)
 		if err != nil {
-			// A later metric set may still serve the metric; remember the error
+			// Another metric set may still serve the metric; remember the error
 			// and surface it only if none does.
 			lastErr = err
 			continue

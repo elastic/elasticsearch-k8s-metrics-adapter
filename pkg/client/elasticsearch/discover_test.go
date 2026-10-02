@@ -194,9 +194,9 @@ func TestFieldCaps_OtherBadRequestIsAnError(t *testing.T) {
 	assert.False(t, mc.typesFilterUnsupported.Load())
 }
 
-// A metric set whose index pattern errors must not shadow a later metric set
-// that serves the metric.
-func TestResolveCustomMetric_TriesLaterMetricSetAfterError(t *testing.T) {
+// Metric sets are probed last-configured first. One whose index pattern errors
+// must not shadow an earlier metric set that serves the metric.
+func TestResolveCustomMetric_TriesOtherMetricSetAfterError(t *testing.T) {
 	const metric = "prometheus.foo.value"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -220,24 +220,15 @@ metricServers:
   - name: es
     serverType: elasticsearch
     metricSets:
-      - indices: [ 'bad-*' ]
       - indices: [ 'good-*' ]
+      - indices: [ 'bad-*' ]
 `))
 	require.NoError(t, err)
-	namer, err := config.NewNamer(nil)
-	require.NoError(t, err)
-	mc := &MetricsClient{
-		logger:          logr.Discard(),
-		Client:          esClient,
-		metricServerCfg: cfg.MetricServers[0],
-		metrics:         map[string]provider.CustomMetricInfo{},
-		indexedMetrics:  map[string]MetricMetadata{},
-		namer:           namer,
-	}
+	mc := newTestMetricsClient(t, esClient, cfg)
 
 	info, found, err := mc.ResolveCustomMetric(context.Background(), metric)
 	require.NoError(t, err)
-	require.True(t, found, "the second metric set serves the metric")
+	require.True(t, found, "the first metric set serves the metric")
 	assert.Equal(t, metric, info.Metric)
 	assert.Equal(t, []string{"good-*"}, mc.indexedMetrics[metric].Indices)
 
@@ -246,6 +237,54 @@ metricServers:
 	_, found, err = mc.ResolveCustomMetric(context.Background(), "prometheus.other.value")
 	assert.False(t, found)
 	require.Error(t, err)
+}
+
+// When several metric sets serve a metric, the last configured one wins, as in
+// full mode where a later metric set overwrites an earlier one. Only that set
+// is probed.
+func TestResolveCustomMetric_LastConfiguredMetricSetWins(t *testing.T) {
+	const metric = "prometheus.foo.value"
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		requests = append(requests, r.URL.Path)
+		_, _ = w.Write([]byte(`{"fields":{"` + metric + `":{"long":{"type":"long","metadata_field":false}}}}`))
+	}))
+	defer srv.Close()
+	esClient, err := esv8.NewClient(esv8.Config{Addresses: []string{srv.URL}}) //nolint:staticcheck
+	require.NoError(t, err)
+
+	cfg, err := config.From([]byte(`
+metricServers:
+  - name: es
+    serverType: elasticsearch
+    metricSets:
+      - indices: [ 'metrics-*' ]
+      - indices: [ 'metricbeat-*' ]
+`))
+	require.NoError(t, err)
+	mc := newTestMetricsClient(t, esClient, cfg)
+
+	_, found, err := mc.ResolveCustomMetric(context.Background(), metric)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, []string{"metricbeat-*"}, mc.indexedMetrics[metric].Indices)
+	assert.Equal(t, []string{"/metricbeat-*/_field_caps"}, requests, "the earlier metric set is not probed")
+}
+
+func newTestMetricsClient(t *testing.T, esClient *esv8.Client, cfg *config.Config) *MetricsClient {
+	t.Helper()
+	namer, err := config.NewNamer(nil)
+	require.NoError(t, err)
+	return &MetricsClient{
+		logger:          logr.Discard(),
+		Client:          esClient,
+		metricServerCfg: cfg.MetricServers[0],
+		metrics:         map[string]provider.CustomMetricInfo{},
+		indexedMetrics:  map[string]MetricMetadata{},
+		namer:           namer,
+	}
 }
 
 // The timeout passed to fetchFieldCaps bounds the request.
