@@ -2,7 +2,7 @@ module github.com/elastic/elasticsearch-k8s-metrics-adapter
 
 go 1.26.0
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 require (
 	github.com/KimMachineGun/automemlimit v1.0.0
