@@ -51,7 +51,7 @@ check-license-header:
 	@ hack/check/check-license-header.sh
 
 generate-notice-file:
-	go install go.elastic.co/go-licence-detector@v0.3.0
+	go install go.elastic.co/go-licence-detector@v0.11.1
 	go list -mod=mod -m -json all | go-licence-detector -noticeOut=NOTICE.txt -noticeTemplate=hack/notice/NOTICE.txt.tmpl -includeIndirect -overrides=hack/notice/overrides/overrides.json -rules=hack/notice/rules.json
 
 generated/openapi/zz_generated.openapi.go: go.mod go.sum

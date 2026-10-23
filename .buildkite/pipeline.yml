@@ -11,21 +11,21 @@ steps:
     artifact_paths:
       - "coverage.out"
     agents:
-      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.27.2"
+      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.27.3"
       cpu: "4"
       memory: "5G"
 
   - label: ":go: Build"
     command: "make all"
     agents:
-      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.27.2"
+      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.27.3"
       cpu: "5"
       memory: "8G"
 
   - label: ":helm: validate helm charts"
     command: "make validate-helm"
     agents:
-      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.27.2"
+      image: "docker.elastic.co/ci-agent-images/eck-region/go-builder-buildkite-agent:1.27.3"
       cpu: "4"
       memory: "4G"
 
@@ -78,7 +78,7 @@ steps:
       chmod +x /usr/local/bin/kind
       # Install helm from a pinned release tarball and verify its checksum, rather
       # than piping a remote install script straight into bash.
-      HELM_VERSION="v3.17.3"
+      HELM_VERSION="v3.22.1"
       HELM_TARBALL="helm-$${HELM_VERSION}-linux-amd64.tar.gz"
       curl -sSLfo "/tmp/$${HELM_TARBALL}" "https://get.helm.sh/$${HELM_TARBALL}"
       curl -sSLfo "/tmp/$${HELM_TARBALL}.sha256sum" "https://get.helm.sh/$${HELM_TARBALL}.sha256sum"

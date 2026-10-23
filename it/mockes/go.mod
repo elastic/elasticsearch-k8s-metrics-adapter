@@ -1,3 +1,3 @@
 module github.com/elastic/elasticsearch-k8s-metrics-adapter/it/mockes
 
-go 1.23
+go 1.27.3
