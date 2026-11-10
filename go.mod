@@ -10,7 +10,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/itchyny/gojq v0.12.20
 	github.com/prometheus/client_golang v1.25.0
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
 	go.elastic.co/apm/module/apmelasticsearch/v2 v2.7.12
 	go.elastic.co/apm/module/apmzap/v2 v2.7.12
