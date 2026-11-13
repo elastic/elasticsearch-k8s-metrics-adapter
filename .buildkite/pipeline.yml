@@ -103,14 +103,6 @@ steps:
 
   - wait
 
-  - label: ":serverless::argo: Run synthetics tests and update elasticsearch-k8s-metrics-adapter to ${VERSION} in serverless-gitops"
-    branches: main
-    trigger: gpctl-promote-after-serverless-devenv-synthetics
-    build:
-      env:
-        SERVICE: elasticsearch-k8s-metrics-adapter
-        SERVICE_COMMIT_HASH: "${VERSION}"
-
 notify:
   - slack: "#ecp-services-notifications"
     if: build.branch == "main" && build.state == "failed" && build.source != "trigger_job"
