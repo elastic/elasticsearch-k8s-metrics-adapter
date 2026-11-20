@@ -3,7 +3,7 @@ module github.com/elastic/elasticsearch-k8s-metrics-adapter
 go 1.27.3
 
 require (
-	github.com/KimMachineGun/automemlimit v1.0.1
+	github.com/KimMachineGun/automemlimit v1.0.2
 	github.com/elastic/go-elasticsearch/v9 v9.5.2
 	github.com/go-logr/logr v1.4.4
 	github.com/go-logr/zapr v1.3.0

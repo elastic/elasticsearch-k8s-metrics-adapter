@@ -35,7 +35,7 @@ steps:
       OCI_REGISTRY_PATH: oci://${DOCKER_IMAGE}
       CHART_APP_VERSION: "${DOCKER_IMAGE_TAG}"
     agents:
-      image: "docker.elastic.co/ci-agent-images/serverless-helm-builder:0.3.8"
+      image: "docker.elastic.co/ci-agent-images/serverless-helm-builder:0.4.0"
 
   - wait
 
@@ -47,7 +47,7 @@ steps:
           DRIVAH_AMD_AGENT_MEMORY: "8G"
           DRIVAH_AMD_AGENT_CPU: "6"
         agents:
-          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.11.2"
+          image: "docker.elastic.co/ci-agent-images/serverless-docker-builder:0.11.4"
 
   - wait
 
