@@ -62,6 +62,8 @@ spec:
       name: elasticsearch-k8s-metrics-adapter
     spec:
       repository: elastic/elasticsearch-k8s-metrics-adapter
+      skip_intermediate_builds: true
+      skip_intermediate_builds_branch_filter: "!main"
       provider_settings:
         build_branches: true
         build_pull_request_ready_for_review: true
