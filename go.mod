@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/KimMachineGun/automemlimit v1.0.2
-	github.com/elastic/go-elasticsearch/v9 v9.5.2
+	github.com/elastic/go-elasticsearch/v9 v9.5.3
 	github.com/go-logr/logr v1.4.4
 	github.com/go-logr/zapr v1.3.0
 	github.com/google/go-cmp v0.7.0
